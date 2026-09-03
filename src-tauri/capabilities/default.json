@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the Tuwuh main window. Filesystem work goes through this crate's own commands, not through a generic fs plugin, so the window gets core window control and nothing else.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-title",
+    "core:event:default"
+  ]
+}

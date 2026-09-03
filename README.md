@@ -1,0 +1,90 @@
+# Tuwuh
+
+A desktop file manager for Linux with a real code editor and a real terminal
+built in. Native binary, not a browser tab: it reads and writes the actual
+filesystem through a Rust backend.
+
+## What it does
+
+**File management.** Places sidebar from the XDG user directories, bookmarks,
+breadcrumbs, back and forward history, four view modes (details, icons,
+compact, tree), sorting by name, size, modified time or category, hidden-file
+toggle, dual pane, search scoped to the current folder, and a context menu with
+copy, cut, paste, rename and trash. Deletions go to the XDG trash by default;
+permanent deletion is a separate, explicit action.
+
+**Categorised icons.** Every file is classified in the backend by extension, and
+by the executable bit when there is no extension, into one of seventeen
+categories. Each category has its own glyph and its own colour, so the grid
+reads without relying on hue alone. Symbolic links carry a badge, because acting
+on a link when you meant its target is a mistake worth preventing.
+
+**Code editor.** Monaco, the editor that powers VS Code, embedded as a
+collapsible pane that opens when you open a text file. Syntax highlighting,
+inline suggestions, auto-indent, bracket matching and colourisation, the command
+palette, and per-file tabs with an unsaved indicator. Saving writes to a
+temporary file and renames it, so an interrupted save cannot leave a truncated
+file behind, and the original permission bits are preserved.
+
+**Terminal.** A real pseudo-terminal running your login shell, in a collapsible
+pane, opening in whichever folder the pane is showing. xterm.js is only the
+renderer; job control, curses programs and shell completion all work because
+there is a real shell on the other end.
+
+**AI providers.** A settings section for Anthropic, OpenAI, xAI, OpenRouter and
+a local Ollama, with model, base URL, token and timeout controls. Keys are
+stored in the OS keyring and never in the settings file or the webview: requests
+are made from the Rust side, and there is deliberately no command that reads a
+key back. The assistant panel sees the listing of the current folder and can
+propose file operations, which appear as buttons you press. It never performs
+one on its own, and that confirmation cannot be turned off.
+
+## What it does not do yet
+
+- Drag and drop between panes.
+- Archive browsing, or mounting remote filesystems (no KIO equivalent).
+- Thumbnails for video or PDF. Images preview in the info panel; everything else
+  shows metadata only.
+- A tree view that expands in place. The tree mode currently lists like the
+  compact mode.
+- Any visual design pass. The layout is functional and the palette is carried
+  over, but the interface has not been designed, only built.
+
+## Requirements
+
+Arch or another Linux with `webkit2gtk-4.1`, `gtk3`, `libappindicator-gtk3` and
+`librsvg`. Building needs Rust, Node and npm.
+
+## Build
+
+```sh
+npm install
+npm run dist          # release bundle in src-tauri/target/release
+```
+
+For development, `npm run app` starts Vite and the desktop window together.
+
+Checks:
+
+```sh
+npm run typecheck                 # frontend
+cd src-tauri && cargo test --lib  # backend
+```
+
+## Layout
+
+```
+src/            React frontend
+  lib/api.ts    the only boundary between the UI and the backend
+  lib/store.ts  pane state, a cache over the filesystem and never the truth
+src-tauri/src/
+  fs_ops.rs     filesystem commands
+  pty.rs        pseudo-terminals
+  settings.rs   preferences, and keyring-backed provider keys
+  ai.rs         provider calls, made server-side so keys stay out of the webview
+  watcher.rs    inotify watches for the directories currently on screen
+```
+
+## Licence
+
+MIT. See `LICENSE`.

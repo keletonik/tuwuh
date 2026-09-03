@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Tuwuh
+GenericName=File Manager
+Comment=File manager with a built-in code editor and terminal
+Exec=tuwuh %U
+Icon=tuwuh
+Terminal=false
+Categories=Utility;FileTools;FileManager;
+MimeType=inode/directory;
+Keywords=files;folders;explorer;browser;editor;terminal;
+StartupNotify=true
+StartupWMClass=Tuwuh
