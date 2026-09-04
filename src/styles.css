@@ -21,23 +21,25 @@
   --fm-warn: #c4a15a;
   --fm-editor-bg: #0b130f;
 
-  /* Category tones. Each pairs with a distinct glyph in file-icon.tsx, so the
-     grid is still readable without relying on hue alone. */
-  --fm-code: #7fb069;
-  --fm-doc: #9db4c0;
-  --fm-sheet: #6fae7f;
-  --fm-slide: #c99a6a;
-  --fm-pdf: #c45c4a;
-  --fm-image: #7fa8c4;
-  --fm-video: #a882c4;
-  --fm-audio: #6fa8b8;
-  --fm-archive: #c4a15a;
-  --fm-exec: #d4756b;
-  --fm-font: #b5a4d4;
-  --fm-config: #8b9d90;
-  --fm-db: #6f9ab8;
-  --fm-disk: #9aa8b4;
-  --fm-book: #c8b48a;
+  /* Pre-paint fallbacks only. applyTheme() overwrites every one of these with
+     the active theme's derived tone before the first render. */
+  --fm-tone-folder: #6fae86;
+  --fm-tone-code: #7fb069;
+  --fm-tone-document: #9db4c0;
+  --fm-tone-spreadsheet: #6fae7f;
+  --fm-tone-presentation: #c99a6a;
+  --fm-tone-pdf: #d1796a;
+  --fm-tone-image: #7fa8c4;
+  --fm-tone-video: #b28ac9;
+  --fm-tone-audio: #6fa8b8;
+  --fm-tone-archive: #c4a15a;
+  --fm-tone-executable: #d4756b;
+  --fm-tone-font: #b5a4d4;
+  --fm-tone-config: #9aa39c;
+  --fm-tone-database: #6f9ab8;
+  --fm-tone-disk: #9aa8b4;
+  --fm-tone-book: #c8b48a;
+  --fm-tone-other: #98a09a;
 
   --fm-radius: 4px;
   --fm-row-h: 26px;
@@ -975,6 +977,67 @@ button:focus-visible {
   color: var(--fm-muted);
 }
 
+.fm-themes {
+  display: grid;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.fm-themes legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--fm-muted);
+}
+
+.fm-theme {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--fm-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.fm-theme[data-on] {
+  border-color: var(--fm-accent);
+  background: color-mix(in srgb, var(--fm-accent) 12%, transparent);
+}
+
+/* A swatch of the theme's own surface with four of its category tones. The
+   name alone does not tell you what "Ember" looks like, and a single accent
+   dot hides the part that actually differs between themes. */
+.fm-theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px;
+  border: 1px solid;
+  border-radius: 4px;
+}
+
+.fm-theme-chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.fm-theme-text {
+  display: grid;
+  min-width: 0;
+}
+
+.fm-theme-text small {
+  color: var(--fm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fm-check-warn {
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--fm-warn) 40%, var(--fm-border));
@@ -1156,6 +1219,20 @@ button:focus-visible {
 
 ::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--fm-accent) 60%, var(--fm-border));
+}
+
+/* Elevation reads differently by polarity: the heavy shadows that separate a
+   menu from a near-black surface look like smudges on a light one. */
+:root[data-polarity="light"] .fm-menu {
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+}
+
+:root[data-polarity="light"] .fm-toast {
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+}
+
+:root[data-polarity="light"] .fm-overlay {
+  background: rgb(0 0 0 / 0.28);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -19,7 +19,7 @@ import {
   type Settings,
 } from "@/lib/api";
 import { useApp } from "@/lib/store";
-import { THEMES, type ThemeId } from "@/lib/themes";
+import { THEME_LIST } from "@/lib/themes";
 
 const PROVIDER_LABEL: Record<ProviderId, string> = {
   anthropic: "Anthropic",
@@ -313,19 +313,33 @@ export function SettingsPanel() {
 
         <section>
           <h3>Appearance and behaviour</h3>
-          <label className="fm-field">
-            Theme
-            <select
-              value={settings.view.theme}
-              onChange={(e) => patch({ view: { ...settings.view, theme: e.target.value } })}
-            >
-              {Object.values(THEMES).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <fieldset className="fm-themes">
+            <legend>Theme</legend>
+            {THEME_LIST.map((t) => (
+              <label key={t.id} className="fm-theme" data-on={settings.view.theme === t.id || undefined}>
+                <input
+                  type="radio"
+                  name="theme"
+                  checked={settings.view.theme === t.id}
+                  onChange={() => patch({ view: { ...settings.view, theme: t.id } })}
+                />
+                <span
+                  className="fm-theme-chip"
+                  aria-hidden
+                  style={{ background: t.bg, borderColor: t.border }}
+                >
+                  <i style={{ background: t.accent }} />
+                  <i style={{ background: t.tones.code }} />
+                  <i style={{ background: t.tones.image }} />
+                  <i style={{ background: t.tones.archive }} />
+                </span>
+                <span className="fm-theme-text">
+                  <strong>{t.name}</strong>
+                  <small>{t.dark ? t.blurb : `Light. ${t.blurb}`}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
 
           {(
             [
@@ -350,19 +364,3 @@ export function SettingsPanel() {
   );
 }
 
-/** Apply a theme's tokens as CSS custom properties on the document root. */
-export function applyTheme(id: ThemeId) {
-  const t = THEMES[id] ?? THEMES.forest;
-  const root = document.documentElement;
-  root.style.setProperty("--fm-bg", t.bg);
-  root.style.setProperty("--fm-bg1", t.bg1);
-  root.style.setProperty("--fm-bg2", t.bg2);
-  root.style.setProperty("--fm-fg", t.fg);
-  root.style.setProperty("--fm-muted", t.muted);
-  root.style.setProperty("--fm-accent", t.accent);
-  root.style.setProperty("--fm-wood", t.wood);
-  root.style.setProperty("--fm-border", t.border);
-  root.style.setProperty("--fm-danger", t.danger);
-  root.style.setProperty("--fm-warn", t.warn);
-  root.style.setProperty("--fm-editor-bg", t.editorBg);
-}

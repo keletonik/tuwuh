@@ -14,16 +14,18 @@ import { Save, X } from "lucide-react";
 import { writeTextFile } from "@/lib/api";
 import { langFromName } from "@/lib/languages";
 import { isDirty, useApp } from "@/lib/store";
-import { THEMES, type ThemeId } from "@/lib/themes";
+import { themeById } from "@/lib/themes";
 
 const THEME_NAME = "tuwuh";
 
 /** Map the app palette onto a Monaco theme so the editor is not a bright
  *  rectangle sitting inside a dark file manager. */
-function defineTheme(monaco: Monaco, id: ThemeId) {
-  const t = THEMES[id] ?? THEMES.forest;
+function defineTheme(monaco: Monaco, id: string) {
+  const t = themeById(id);
   monaco.editor.defineTheme(THEME_NAME, {
-    base: "vs-dark",
+    // A dark Monaco base under a light chrome leaves the editor a black hole
+    // in the middle of the window.
+    base: t.dark ? "vs-dark" : "vs",
     inherit: true,
     rules: [],
     colors: {
@@ -196,7 +198,7 @@ export function EditorPane() {
         language={langFromName(tab.name)}
         value={tab.draft}
         onChange={(v) => setDraft(tab.path, v ?? "")}
-        beforeMount={(monaco) => defineTheme(monaco, settings.view.theme as ThemeId)}
+        beforeMount={(monaco) => defineTheme(monaco, settings.view.theme)}
         onMount={(ed, monaco) => {
           editorRef.current = ed;
           ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void save());

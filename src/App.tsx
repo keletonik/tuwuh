@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { getSettings, homeDir, onFsChanged } from "@/lib/api";
 import { useApp } from "@/lib/store";
-import { applyTheme } from "@/components/settings";
+import { applyTheme } from "@/lib/apply-theme";
 import { Workbench } from "@/components/workbench";
-import type { ThemeId } from "@/lib/themes";
 
 export default function App() {
   const ready = useApp((s) => s.ready);
@@ -26,7 +25,7 @@ export default function App() {
   }, [boot]);
 
   useEffect(() => {
-    if (theme) applyTheme(theme as ThemeId);
+    if (theme) applyTheme(theme);
   }, [theme]);
 
   /* One listener for the whole app: the backend names the directory that

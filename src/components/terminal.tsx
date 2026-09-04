@@ -20,11 +20,11 @@ import {
   writeTerminal,
 } from "@/lib/api";
 import { useApp } from "@/lib/store";
-import { THEMES, type ThemeId } from "@/lib/themes";
+import { themeById } from "@/lib/themes";
 
 export function TerminalPane() {
   const cwd = useApp((s) => s.terminalCwd);
-  const themeId = useApp((s) => s.settings?.view.theme ?? "forest") as ThemeId;
+  const themeId = useApp((s) => s.settings?.view.theme ?? "forest");
   const fontFamily = useApp((s) => s.settings?.editor.fontFamily ?? "monospace");
   const fontSize = useApp((s) => s.settings?.editor.fontSize ?? 13);
   const toast = useApp((s) => s.toast);
@@ -36,7 +36,7 @@ export function TerminalPane() {
     const host = hostRef.current;
     if (!host) return;
 
-    const t = THEMES[themeId] ?? THEMES.forest;
+    const t = themeById(themeId);
     const term = new Xterm({
       fontFamily,
       fontSize,

@@ -29,30 +29,24 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { Category, Entry } from "@/lib/api";
 
-interface Look {
-  Icon: LucideIcon;
-  /** CSS custom property name from the active theme. */
-  tone: string;
-}
-
-const LOOK: Record<Category, Look> = {
-  folder: { Icon: Folder, tone: "--fm-accent" },
-  code: { Icon: Braces, tone: "--fm-code" },
-  document: { Icon: FileText, tone: "--fm-doc" },
-  spreadsheet: { Icon: FileSpreadsheet, tone: "--fm-sheet" },
-  presentation: { Icon: Presentation, tone: "--fm-slide" },
-  pdf: { Icon: FileText, tone: "--fm-pdf" },
-  image: { Icon: FileImage, tone: "--fm-image" },
-  video: { Icon: FileVideo, tone: "--fm-video" },
-  audio: { Icon: FileAudio, tone: "--fm-audio" },
-  archive: { Icon: Archive, tone: "--fm-archive" },
-  executable: { Icon: Binary, tone: "--fm-exec" },
-  font: { Icon: Type, tone: "--fm-font" },
-  config: { Icon: Settings2, tone: "--fm-config" },
-  database: { Icon: Database, tone: "--fm-db" },
-  disk: { Icon: Disc, tone: "--fm-disk" },
-  book: { Icon: Book, tone: "--fm-book" },
-  other: { Icon: FileGeneric, tone: "--fm-muted" },
+const GLYPH: Record<Category, LucideIcon> = {
+  folder: Folder,
+  code: Braces,
+  document: FileText,
+  spreadsheet: FileSpreadsheet,
+  presentation: Presentation,
+  pdf: FileText,
+  image: FileImage,
+  video: FileVideo,
+  audio: FileAudio,
+  archive: Archive,
+  executable: Binary,
+  font: Type,
+  config: Settings2,
+  database: Database,
+  disk: Disc,
+  book: Book,
+  other: FileGeneric,
 };
 
 export function FileIcon({
@@ -64,12 +58,14 @@ export function FileIcon({
   size?: number;
   open?: boolean;
 }) {
-  const look = LOOK[entry.category] ?? LOOK.other;
-  const Icon = entry.kind === "dir" && open ? FolderOpen : look.Icon;
+  const Icon = entry.kind === "dir" && open ? FolderOpen : (GLYPH[entry.category] ?? FileGeneric);
+  // The tone variable is named after the category, so a theme that defines a
+  // tone for every category cannot leave one icon on a stale colour.
+  const tone = `var(--fm-tone-${entry.category})`;
 
   return (
     <span className="fm-icon" data-category={entry.category}>
-      <Icon size={size} strokeWidth={1.75} style={{ color: `var(${look.tone})` }} />
+      <Icon size={size} strokeWidth={1.75} style={{ color: tone }} />
       {entry.isSymlink && (
         // A link and its target look identical otherwise, and acting on the
         // wrong one is the mistake this badge exists to prevent.

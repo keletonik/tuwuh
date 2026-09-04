@@ -4,12 +4,13 @@
   "description": "",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run check:contrast && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "app": "tauri dev",
-    "dist": "tauri build"
+    "dist": "tauri build",
+    "check:contrast": "node --experimental-strip-types scripts/check-contrast.mjs"
   },
   "keywords": [],
   "type": "module",
