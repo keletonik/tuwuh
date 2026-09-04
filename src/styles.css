@@ -82,13 +82,25 @@ button:disabled {
   cursor: default;
 }
 
-input,
+/* Text-like fields only. Applying this to radios and checkboxes overrides the
+   control's own painting, which left the *selected* radio looking smaller than
+   the unselected ones and made the provider choice unreadable. */
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   background: var(--fm-bg);
   border: 1px solid var(--fm-border);
   border-radius: var(--fm-radius);
   padding: 4px 7px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--fm-accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: none;
 }
 
 input:focus-visible,
@@ -247,18 +259,32 @@ button:focus-visible {
   grid-template-rows: auto 1fr auto;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   background: var(--fm-bg);
   outline: none;
+}
+
+/* A grid item defaults to min-width:auto, so the listing refuses to shrink
+   below its own content. The icon grid then measures auto-fill against that
+   over-wide box, lays out one column too many, and the last one is clipped
+   behind a horizontal scrollbar. */
+.fm-pane > * {
+  min-width: 0;
 }
 
 .fm-pane[data-active] .fm-pane-bar {
   border-bottom-color: color-mix(in srgb, var(--fm-accent) 55%, var(--fm-border));
 }
 
+/* The bar wraps rather than crushing its contents. In a dual pane each half is
+   narrow enough that a single row would drive the breadcrumbs to zero width
+   and clip the view buttons off the right edge. */
 .fm-pane-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  row-gap: 4px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--fm-border);
   background: var(--fm-bg1);
@@ -272,7 +298,7 @@ button:focus-visible {
 .fm-crumbs {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -311,6 +337,8 @@ button:focus-visible {
 .fm-pane-tools {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
   gap: 2px;
 }
 
@@ -326,11 +354,17 @@ button:focus-visible {
   color: var(--fm-muted);
 }
 
+.fm-search {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .fm-search input {
   border: 0;
   background: none;
   padding: 3px 0;
-  width: 130px;
+  width: 118px;
+  min-width: 0;
 }
 
 .fm-search input:focus-visible {
@@ -341,8 +375,16 @@ button:focus-visible {
 
 .fm-list {
   overflow: auto;
+  /* Reserve the scrollbar gutter. Without it the icon grid's auto-fill is
+     computed against the full width, the vertical scrollbar then appears and
+     steals 10px, and the last column is clipped behind it. */
+  scrollbar-gutter: stable;
   padding: 4px;
   min-height: 0;
+}
+
+.fm-list[data-view="icons"] {
+  overflow-x: hidden;
 }
 
 .fm-row {
@@ -371,29 +413,43 @@ button:focus-visible {
 
 .fm-list[data-view="icons"] {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  /* An explicit track height. The list-view row height is a min, not a floor
+     tall enough for a 34px icon above two lines of label, so without this the
+     cells stay list-height and every label lands on the icon below it. */
+  grid-auto-rows: 96px;
+  gap: 2px;
   align-content: start;
 }
 
 .fm-list[data-view="icons"] .fm-row {
   grid-template-columns: 1fr;
+  align-content: start;
   justify-items: center;
-  padding: 10px 4px;
+  min-height: 0;
+  height: 100%;
+  padding: 12px 6px 8px;
   text-align: center;
+  overflow: hidden;
 }
 
 .fm-list[data-view="icons"] .fm-col-name {
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .fm-list[data-view="icons"] .fm-name {
   white-space: normal;
   overflow-wrap: anywhere;
-  line-height: 1.25;
-  max-height: 2.5em;
+  line-height: 1.2;
+  /* Two lines, then clip. A third line would push into the next row. */
+  max-height: 2.4em;
   overflow: hidden;
+  width: 100%;
 }
 
 .fm-row:hover {
