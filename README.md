@@ -27,17 +27,23 @@ temporary file and renames it, so an interrupted save cannot leave a truncated
 file behind, and the original permission bits are preserved.
 
 **Terminal.** A real pseudo-terminal running your login shell, in a collapsible
-pane, opening in whichever folder the pane is showing. xterm.js is only the
-renderer; job control, curses programs and shell completion all work because
-there is a real shell on the other end.
+pane, opening in whichever folder the pane is showing. Dock it at the bottom,
+the right or the top, and open several tabs. xterm.js is only the renderer;
+job control, curses programs and shell completion all work because there is a
+real shell on the other end.
 
-**AI providers.** A settings section for Anthropic, OpenAI, xAI, OpenRouter and
-a local Ollama, with model, base URL, token and timeout controls. Keys are
-stored in the OS keyring and never in the settings file or the webview: requests
-are made from the Rust side, and there is deliberately no command that reads a
-key back. The assistant panel sees the listing of the current folder and can
-propose file operations, which appear as buttons you press. It never performs
-one on its own, and that confirmation cannot be turned off.
+**AI providers.** Settings for Anthropic, OpenAI, xAI, OpenRouter, Hugging Face
+(Inference Providers router) and a local Ollama or other OpenAI-compatible
+server. Each vendor has its own default model and remembers the last id you
+picked. Keys are stored in the OS keyring and never in the settings file or the
+webview: requests are made from the Rust side, and there is deliberately no
+command that reads a key back. The assistant panel sees the listing of the
+current folder and can propose file operations, which appear as buttons you
+press. It never performs one on its own, and that confirmation cannot be turned
+off.
+
+**Menus.** Press Alt for File, View, Go and Terminal. Dock the terminal top,
+right or bottom, and open several tabs.
 
 ## What it does not do yet
 

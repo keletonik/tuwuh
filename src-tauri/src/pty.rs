@@ -78,7 +78,12 @@ pub fn spawn_terminal(
         })
         .map_err(|e| AppError::Terminal(format!("openpty: {e}")))?;
 
-    let mut cmd = CommandBuilder::new(user_shell());
+    let shell = crate::settings::get_settings()
+        .ok()
+        .and_then(|s| s.terminal_shell)
+        .filter(|s| !s.trim().is_empty() && std::path::Path::new(s.trim()).exists())
+        .unwrap_or_else(user_shell);
+    let mut cmd = CommandBuilder::new(shell);
     cmd.cwd(&dir);
     // Without this the shell assumes a dumb terminal and colour, line editing
     // and cursor addressing all degrade.

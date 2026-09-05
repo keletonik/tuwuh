@@ -35,6 +35,7 @@ fn base_url_for(p: Provider, configured: Option<&str>) -> String {
         Provider::Openai => "https://api.openai.com/v1".into(),
         Provider::Xai => "https://api.x.ai/v1".into(),
         Provider::Openrouter => "https://openrouter.ai/api/v1".into(),
+        Provider::Huggingface => "https://router.huggingface.co/v1".into(),
         Provider::Ollama => "http://localhost:11434/v1".into(),
     }
 }
@@ -224,6 +225,7 @@ pub fn provider_status() -> Vec<ProviderStatus> {
         Provider::Openai,
         Provider::Xai,
         Provider::Openrouter,
+        Provider::Huggingface,
         Provider::Ollama,
     ]
     .into_iter()
@@ -244,6 +246,10 @@ mod tests {
     fn base_urls_default_per_provider_and_honour_an_override() {
         assert_eq!(base_url_for(Provider::Openai, None), "https://api.openai.com/v1");
         assert_eq!(base_url_for(Provider::Ollama, None), "http://localhost:11434/v1");
+        assert_eq!(
+            base_url_for(Provider::Huggingface, None),
+            "https://router.huggingface.co/v1"
+        );
         assert_eq!(
             base_url_for(Provider::Openai, Some("http://localhost:1234/v1/")),
             "http://localhost:1234/v1"

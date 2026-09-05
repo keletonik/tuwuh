@@ -121,21 +121,41 @@ button:focus-visible {
   height: 100%;
 }
 
+.fm-chrome-wrap {
+  background: var(--fm-bg1);
+  border-bottom: 1px solid var(--fm-border);
+}
+
 .fm-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 6px 10px;
-  background: var(--fm-bg1);
-  border-bottom: 1px solid var(--fm-border);
+}
+
+.fm-chrome-hint {
+  margin-left: auto;
+  margin-right: 8px;
+  color: var(--fm-muted);
+  font-size: 11px;
 }
 
 .fm-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: ui-serif, Georgia, serif;
   font-size: 15px;
   letter-spacing: 0.02em;
   color: var(--fm-wood);
+}
+
+.fm-wordmark img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
 }
 
 .fm-chrome-actions {
@@ -401,7 +421,7 @@ button:focus-visible {
 }
 
 .fm-list[data-view="details"] .fm-row {
-  grid-template-columns: minmax(0, 1fr) 90px 150px 110px;
+  grid-template-columns: minmax(140px, 1fr) 72px 118px 88px;
 }
 
 .fm-list[data-view="compact"] .fm-row {
@@ -500,6 +520,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .fm-col-size,
@@ -722,31 +743,133 @@ button:focus-visible {
   grid-template-rows: auto 1fr;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   background: var(--fm-bg);
 }
 
 .fm-terminal-bar {
-  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 6px 0 4px;
   border-bottom: 1px solid var(--fm-border);
   background: var(--fm-bg1);
   color: var(--fm-muted);
   font: 11px ui-monospace, monospace;
 }
 
-.fm-terminal-cwd {
+.fm-term-tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.fm-term-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 2px solid transparent;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.fm-term-tab span {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
+}
+
+.fm-term-tab[data-active] {
+  color: var(--fm-fg);
+  border-bottom-color: var(--fm-accent);
+  background: var(--fm-bg);
+}
+
+.fm-term-tab button,
+.fm-term-add,
+.fm-term-docks button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--fm-radius);
+  color: var(--fm-muted);
+  flex: none;
+}
+
+.fm-term-tab button:hover,
+.fm-term-add:hover,
+.fm-term-docks button:hover {
+  background: var(--fm-bg2);
+  color: var(--fm-fg);
+}
+
+.fm-term-add {
+  margin: 3px 4px;
+}
+
+.fm-term-docks {
+  display: flex;
+  gap: 1px;
+  flex: none;
+}
+
+.fm-term-docks button[data-on] {
+  background: color-mix(in srgb, var(--fm-accent) 22%, transparent);
+  color: var(--fm-fg);
+}
+
+.fm-terminal-sessions {
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+}
+
+.fm-terminal-session {
+  grid-area: 1 / 1;
+  min-height: 0;
+  min-width: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.fm-terminal-session[data-active] {
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .fm-terminal-host {
+  height: 100%;
   min-height: 0;
+  min-width: 0;
   padding: 4px 6px;
 }
 
 .fm-terminal-host .xterm {
   height: 100%;
+}
+
+.fm-docks {
+  border: 0;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.fm-docks legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--fm-muted);
+}
+
+.fm-dock-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 
 /* Info panel ------------------------------------------------------------- */
@@ -827,8 +950,8 @@ button:focus-visible {
 
 .fm-settings {
   display: grid;
-  grid-template-rows: auto 1fr;
-  width: min(760px, 100%);
+  grid-template-rows: auto auto 1fr;
+  width: min(780px, 100%);
   max-height: min(760px, 86vh);
   background: var(--fm-bg1);
   border: 1px solid var(--fm-border);
@@ -863,7 +986,25 @@ button:focus-visible {
 .fm-settings-head button:first-child {
   background: var(--fm-accent);
   border-color: var(--fm-accent);
-  color: #08110c;
+  color: var(--fm-bg);
+}
+
+.fm-settings-nav {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--fm-border);
+}
+
+.fm-settings-nav button {
+  padding: 6px 10px;
+  color: var(--fm-muted);
+  border-bottom: 2px solid transparent;
+}
+
+.fm-settings-nav button[data-on] {
+  color: var(--fm-fg);
+  border-bottom-color: var(--fm-accent);
 }
 
 .fm-settings-body {
@@ -871,6 +1012,96 @@ button:focus-visible {
   padding: 14px;
   display: grid;
   gap: 22px;
+}
+
+.fm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.fm-provider[data-on] {
+  border-color: var(--fm-accent);
+}
+
+.fm-provider-blurb {
+  display: block;
+  color: var(--fm-muted);
+  font-weight: 400;
+}
+
+.fm-menubar {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 4px;
+}
+
+.fm-menu {
+  position: relative;
+}
+
+.fm-menu-title {
+  padding: 4px 10px;
+  border-radius: var(--fm-radius);
+  color: var(--fm-fg);
+}
+
+.fm-menu-title:hover,
+.fm-menu:focus-within .fm-menu-title {
+  background: var(--fm-bg2);
+}
+
+.fm-menu-drop {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--fm-bg1);
+  border: 1px solid var(--fm-border);
+  border-radius: 6px;
+}
+
+.fm-menu:hover .fm-menu-drop,
+.fm-menu:focus-within .fm-menu-drop {
+  display: grid;
+}
+
+.fm-menu-drop button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 8px;
+  border-radius: var(--fm-radius);
+  text-align: left;
+  color: var(--fm-fg);
+}
+
+.fm-menu-drop button:hover:not(:disabled) {
+  background: var(--fm-bg2);
+}
+
+.fm-menu-drop button:disabled {
+  opacity: 0.45;
+}
+
+.fm-menu-drop button[data-danger] {
+  color: var(--fm-danger);
+}
+
+.fm-menu-drop kbd {
+  color: var(--fm-muted);
+  font: 11px ui-monospace, monospace;
+}
+
+.fm-menu-drop hr {
+  border: 0;
+  border-top: 1px solid var(--fm-border);
+  margin: 4px 0;
 }
 
 .fm-settings-body h3 {

@@ -63,11 +63,19 @@ export interface SearchHit {
   parent: string;
 }
 
-export type ProviderId = "anthropic" | "openai" | "xai" | "openrouter" | "ollama";
+export type ProviderId =
+  | "anthropic"
+  | "openai"
+  | "xai"
+  | "openrouter"
+  | "huggingface"
+  | "ollama";
 
 export interface AiSettings {
   provider: ProviderId;
   model: string;
+  /** Last-used model per provider. Missing keys fall back to that provider's default. */
+  models: Record<string, string>;
   baseUrl: string | null;
   maxTokens: number;
   timeoutMs: number;
@@ -97,6 +105,9 @@ export interface ViewSettings {
   theme: string;
   confirmDelete: boolean;
   singleClickOpen: boolean;
+  /** "top" | "right" | "bottom". Unknown values are treated as bottom. */
+  terminalDock: "top" | "right" | "bottom";
+  restoreLast: boolean;
 }
 
 export interface Settings {
@@ -105,6 +116,7 @@ export interface Settings {
   view: ViewSettings;
   bookmarks: string[];
   terminalShell: string | null;
+  lastPaths: string[];
 }
 
 export interface ProviderStatus {

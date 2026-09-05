@@ -5,9 +5,14 @@
  * when a text file is opened and collapses back out of the way, and the
  * terminal does the same. The file panes are the one region that never
  * collapses, because a file manager with no file list is not a file manager.
+ *
+ * Terminal dock is a setting: bottom (default), right, or top. The slot()
+ * helper decides which Group owns the panel so the three positions cannot
+ * silently collapse to one.
  */
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Bot, Columns2, PanelLeft, Settings, SquareTerminal, X } from "lucide-react";
+import { parseTerminalDock, terminalSlot } from "@/lib/layout";
 import { useApp } from "@/lib/store";
 import { Pane } from "./pane";
 import { Sidebar } from "./sidebar";
@@ -16,11 +21,21 @@ import { TerminalPane } from "./terminal";
 import { SettingsPanel } from "./settings";
 import { Assistant } from "./assistant";
 import { InfoPanel } from "./info";
+import { MenuBar } from "./menu-bar";
+
+function TerminalDockPanel({ orientation }: { orientation: "horizontal" | "vertical" }) {
+  const defaultSize = orientation === "horizontal" ? "28" : "30";
+  return (
+    <Panel defaultSize={defaultSize} minSize="10" collapsible id="terminal">
+      <TerminalPane />
+    </Panel>
+  );
+}
 
 export function Workbench() {
   const settings = useApp((s) => s.settings);
   const tabs = useApp((s) => s.tabs);
-  const terminalOpen = useApp((s) => s.terminalOpen);
+  const terminals = useApp((s) => s.terminals);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const assistantOpen = useApp((s) => s.assistantOpen);
   const infoOpen = useApp((s) => s.infoOpen);
@@ -28,15 +43,25 @@ export function Workbench() {
   const dismissToast = useApp((s) => s.dismissToast);
   const applyView = useApp((s) => s.applyView);
   const navigate = useApp((s) => s.navigate);
+  const addTerminal = useApp((s) => s.addTerminal);
+  const closeAllTerminals = useApp((s) => s.closeAllTerminals);
+  const closeSettings = useApp((s) => s.closeSettings);
 
   if (!settings) return null;
   const dual = settings.view.dualPane;
   const editorOpen = tabs.length > 0;
+  const terminalOpen = terminals.length > 0;
+  const slot = terminalSlot(parseTerminalDock(settings.view.terminalDock));
 
   return (
     <div className="fm-shell">
-      <header className="fm-chrome">
-        <span className="fm-wordmark">Tuwuh</span>
+      <header className="fm-chrome-wrap">
+      <div className="fm-chrome">
+        <span className="fm-wordmark">
+          <img src="/favicon.png" alt="" width={18} height={18} />
+          Tuwuh
+        </span>
+        <span className="fm-chrome-hint">Alt menu</span>
         <div className="fm-chrome-actions">
           <button
             type="button"
@@ -64,7 +89,11 @@ export function Workbench() {
             aria-pressed={terminalOpen}
             data-on={terminalOpen || undefined}
             title="Terminal"
-            onClick={() => useApp.getState().setTerminalOpen(!terminalOpen)}
+            onClick={() => {
+              const s = useApp.getState();
+              if (s.terminals.length) closeAllTerminals();
+              else addTerminal(s.panes[s.activePane].cwd);
+            }}
           >
             <SquareTerminal size={15} />
           </button>
@@ -87,6 +116,8 @@ export function Workbench() {
             <Settings size={15} />
           </button>
         </div>
+      </div>
+      <MenuBar />
       </header>
 
       <Group orientation="horizontal" className="fm-body" id="tuwuh-h">
@@ -97,6 +128,13 @@ export function Workbench() {
 
         <Panel minSize="30" id="centre">
           <Group orientation="vertical" id="tuwuh-v">
+            {slot === "vertical-start" && terminalOpen && (
+              <>
+                <TerminalDockPanel orientation="vertical" />
+                <Separator className="fm-handle fm-handle-h" />
+              </>
+            )}
+
             <Panel minSize="20" id="panes">
               {dual ? (
                 <Group orientation="horizontal" id="tuwuh-panes">
@@ -122,16 +160,21 @@ export function Workbench() {
               </>
             )}
 
-            {terminalOpen && (
+            {slot === "vertical-end" && terminalOpen && (
               <>
                 <Separator className="fm-handle fm-handle-h" />
-                <Panel defaultSize="30" minSize="10" collapsible id="terminal">
-                  <TerminalPane />
-                </Panel>
+                <TerminalDockPanel orientation="vertical" />
               </>
             )}
           </Group>
         </Panel>
+
+        {slot === "horizontal-end" && terminalOpen && (
+          <>
+            <Separator className="fm-handle fm-handle-v" />
+            <TerminalDockPanel orientation="horizontal" />
+          </>
+        )}
 
         {(infoOpen || assistantOpen) && (
           <>
@@ -144,7 +187,7 @@ export function Workbench() {
       </Group>
 
       {settingsOpen && (
-        <div className="fm-overlay" onMouseDown={() => useApp.getState().setSettingsOpen(false)}>
+        <div className="fm-overlay" onMouseDown={() => void closeSettings()}>
           <div onMouseDown={(e) => e.stopPropagation()}>
             <SettingsPanel />
           </div>

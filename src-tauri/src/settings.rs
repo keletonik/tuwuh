@@ -6,6 +6,7 @@
 //! in `ai.rs` on the Rust side instead of from the webview.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -20,6 +21,8 @@ pub enum Provider {
     Openai,
     Xai,
     Openrouter,
+    /// Hugging Face Inference Providers router (OpenAI-compatible).
+    Huggingface,
     /// Local models over an OpenAI-compatible endpoint. No key needed, which is
     /// why key presence is reported per provider rather than globally.
     Ollama,
@@ -32,6 +35,7 @@ impl Provider {
             Provider::Openai => "openai",
             Provider::Xai => "xai",
             Provider::Openrouter => "openrouter",
+            Provider::Huggingface => "huggingface",
             Provider::Ollama => "ollama",
         }
     }
@@ -46,6 +50,7 @@ impl Provider {
             Provider::Openai => "gpt-5",
             Provider::Xai => "grok-4",
             Provider::Openrouter => "anthropic/claude-sonnet-5",
+            Provider::Huggingface => "Qwen/Qwen2.5-7B-Instruct:fastest",
             Provider::Ollama => "llama3.2",
         }
     }
@@ -56,6 +61,10 @@ impl Provider {
 pub struct AiSettings {
     pub provider: Provider,
     pub model: String,
+    /// Last-used model id per provider, so switching radio does not keep the
+    /// previous vendor's model name and 404.
+    #[serde(default)]
+    pub models: std::collections::BTreeMap<String, String>,
     pub base_url: Option<String>,
     pub max_tokens: u32,
     pub timeout_ms: u64,
@@ -70,6 +79,7 @@ impl Default for AiSettings {
         Self {
             provider: Provider::Anthropic,
             model: Provider::Anthropic.default_model().to_owned(),
+            models: BTreeMap::new(),
             base_url: None,
             max_tokens: 2048,
             timeout_ms: 60_000,
@@ -124,6 +134,19 @@ pub struct ViewSettings {
     pub theme: String,
     pub confirm_delete: bool,
     pub single_click_open: bool,
+    /// "top", "right" or "bottom". Anything else is treated as bottom by the UI.
+    #[serde(default = "default_terminal_dock")]
+    pub terminal_dock: String,
+    #[serde(default = "default_true")]
+    pub restore_last: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_terminal_dock() -> String {
+    "bottom".into()
 }
 
 impl Default for ViewSettings {
@@ -135,9 +158,11 @@ impl Default for ViewSettings {
             sort_desc: false,
             dual_pane: false,
             icon_pack: "categorical".into(),
-            theme: "system".into(),
+            theme: "forest".into(),
             confirm_delete: true,
             single_click_open: false,
+            terminal_dock: default_terminal_dock(),
+            restore_last: true,
         }
     }
 }
@@ -155,6 +180,9 @@ pub struct Settings {
     pub bookmarks: Vec<String>,
     #[serde(default)]
     pub terminal_shell: Option<String>,
+    /// Last directory shown in each pane, used when restoreLast is on.
+    #[serde(default)]
+    pub last_paths: Vec<String>,
 }
 
 impl Default for Settings {
@@ -165,6 +193,7 @@ impl Default for Settings {
             view: ViewSettings::default(),
             bookmarks: Vec::new(),
             terminal_shell: None,
+            last_paths: Vec::new(),
         }
     }
 }
@@ -253,6 +282,7 @@ mod tests {
         assert!(Provider::Openai.needs_key());
         assert!(Provider::Xai.needs_key());
         assert!(Provider::Openrouter.needs_key());
+        assert!(Provider::Huggingface.needs_key());
         assert!(!Provider::Ollama.needs_key());
     }
 
@@ -264,6 +294,8 @@ mod tests {
         assert_eq!(back.ai.provider, Provider::Anthropic);
         assert_eq!(back.editor.tab_size, 2);
         assert!(!back.view.show_hidden);
+        assert_eq!(back.view.terminal_dock, "bottom");
+        assert_eq!(back.view.theme, "forest");
     }
 
     #[test]
@@ -274,10 +306,38 @@ mod tests {
         assert!(back.view.show_hidden);
         assert_eq!(back.editor.tab_size, 2);
         assert_eq!(back.ai.provider, Provider::Anthropic);
+        assert_eq!(back.view.terminal_dock, "bottom");
     }
 
     #[test]
     fn file_actions_are_off_unless_asked_for() {
         assert!(!AiSettings::default().allow_file_actions);
+    }
+
+    #[test]
+    fn every_provider_has_its_own_default_model() {
+        assert_eq!(Provider::Anthropic.default_model(), "claude-sonnet-5");
+        assert_eq!(Provider::Openai.default_model(), "gpt-5");
+        assert_eq!(Provider::Xai.default_model(), "grok-4");
+        assert_eq!(Provider::Openrouter.default_model(), "anthropic/claude-sonnet-5");
+        assert_eq!(
+            Provider::Huggingface.default_model(),
+            "Qwen/Qwen2.5-7B-Instruct:fastest"
+        );
+        assert_eq!(Provider::Ollama.default_model(), "llama3.2");
+        assert_ne!(Provider::Anthropic.default_model(), Provider::Openai.default_model());
+        assert_ne!(Provider::Huggingface.default_model(), Provider::Ollama.default_model());
+    }
+
+    #[test]
+    fn terminal_dock_round_trips() {
+        let mut s = Settings::default();
+        s.view.terminal_dock = "top".into();
+        let raw = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back.view.terminal_dock, "top");
+        s.view.terminal_dock = "right".into();
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.view.terminal_dock, "right");
     }
 }

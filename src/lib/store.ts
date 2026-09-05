@@ -11,11 +11,13 @@ import {
   listDir,
   parentOf,
   retainWatches,
+  saveSettings,
   watchDir,
   type Entry,
   type Settings,
   type ViewSettings,
 } from "./api";
+import { parseTerminalDock } from "./layout";
 
 export type PaneId = "a" | "b";
 
@@ -39,6 +41,39 @@ export interface OpenTab {
   draft: string;
   truncated: boolean;
   readonly: boolean;
+}
+
+export interface TermTab {
+  id: string;
+  cwd: string;
+}
+
+function normalizeSettings(s: Settings): Settings {
+  const theme = s.view.theme;
+  return {
+    ...s,
+    ai: {
+      ...s.ai,
+      models: s.ai.models ?? {},
+    },
+    view: {
+      ...s.view,
+      terminalDock: parseTerminalDock(s.view.terminalDock),
+      // "system" was the old Rust default and is not a derived theme.
+      theme: !theme || theme === "system" ? "forest" : theme,
+      restoreLast: s.view.restoreLast !== false,
+    },
+    lastPaths: s.lastPaths ?? [],
+    terminalShell: s.terminalShell ?? null,
+  };
+}
+
+function persist(get: () => State) {
+  const s = get().settings;
+  if (!s) return;
+  void saveSettings(s).catch((e) => {
+    get().toast("error", e instanceof Error ? e.message : String(e));
+  });
 }
 
 export interface Toast {
@@ -71,11 +106,12 @@ interface State {
   tabs: OpenTab[];
   activeTab: string | null;
 
-  terminalOpen: boolean;
-  terminalCwd: string;
+  terminals: TermTab[];
+  activeTerminal: string | null;
   infoOpen: boolean;
   settingsOpen: boolean;
   assistantOpen: boolean;
+  menuOpen: boolean;
 
   toasts: Toast[];
 
@@ -99,15 +135,23 @@ interface State {
 
   applyView: (patch: Partial<ViewSettings>) => void;
   setSettings: (s: Settings) => void;
+  persistSettings: () => Promise<void>;
+  closeSettings: () => Promise<void>;
 
   toast: (kind: Toast["kind"], text: string) => void;
   dismissToast: (id: number) => void;
 
-  setTerminalOpen: (open: boolean) => void;
+  addTerminal: (cwd: string) => void;
+  closeTerminalTab: (id: string) => void;
+  closeAllTerminals: () => void;
+  setActiveTerminal: (id: string) => void;
   setInfoOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setAssistantOpen: (open: boolean) => void;
+  setMenuOpen: (open: boolean) => void;
 }
+
+let termSeq = 1;
 
 let toastSeq = 1;
 
@@ -122,24 +166,29 @@ export const useApp = create<State>((set, get) => ({
   tabs: [],
   activeTab: null,
 
-  terminalOpen: false,
-  terminalCwd: "/",
+  terminals: [],
+  activeTerminal: null,
   infoOpen: true,
   settingsOpen: false,
   assistantOpen: false,
+  menuOpen: false,
 
   toasts: [],
 
   async boot(home, settings) {
+    const normalised = normalizeSettings(settings);
     set({
       home,
-      settings,
-      terminalCwd: home,
+      settings: normalised,
       panes: { a: emptyPane(home), b: emptyPane(home) },
       ready: true,
     });
-    await get().navigate("a", home, false);
-    if (settings.view.dualPane) await get().navigate("b", home, false);
+    const startA =
+      normalised.view.restoreLast && normalised.lastPaths[0] ? normalised.lastPaths[0] : home;
+    const startB =
+      normalised.view.restoreLast && normalised.lastPaths[1] ? normalised.lastPaths[1] : startA;
+    await get().navigate("a", startA, false);
+    if (normalised.view.dualPane) await get().navigate("b", startB, false);
   },
 
   async navigate(pane, path, pushHistory = true) {
@@ -179,6 +228,12 @@ export const useApp = create<State>((set, get) => ({
       const open = Object.values(get().panes).map((p) => p.cwd);
       await retainWatches(open).catch(() => undefined);
       await watchDir(path).catch(() => undefined);
+
+      const st = get();
+      if (st.settings) {
+        const lastPaths = [st.panes.a.cwd, st.panes.b.cwd];
+        set({ settings: { ...st.settings, lastPaths } });
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       set((s) => ({
@@ -352,11 +407,29 @@ export const useApp = create<State>((set, get) => ({
   },
 
   applyView(patch) {
-    set((s) => (s.settings ? { settings: { ...s.settings, view: { ...s.settings.view, ...patch } } } : s));
+    set((s) =>
+      s.settings ? { settings: { ...s.settings, view: { ...s.settings.view, ...patch } } } : s,
+    );
+    persist(get);
   },
 
   setSettings(settings) {
-    set({ settings });
+    set({ settings: normalizeSettings(settings) });
+  },
+
+  async persistSettings() {
+    const s = get().settings;
+    if (!s) return;
+    await saveSettings(s);
+  },
+
+  async closeSettings() {
+    try {
+      await get().persistSettings();
+      set({ settingsOpen: false });
+    } catch (e) {
+      get().toast("error", e instanceof Error ? e.message : String(e));
+    }
   },
 
   toast(kind, text) {
@@ -373,10 +446,33 @@ export const useApp = create<State>((set, get) => ({
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
   },
 
-  setTerminalOpen: (terminalOpen) => set({ terminalOpen }),
+  addTerminal(cwd) {
+    const id = `term-${termSeq++}`;
+    set((s) => ({
+      terminals: [...s.terminals, { id, cwd }],
+      activeTerminal: id,
+    }));
+  },
+
+  closeTerminalTab(id) {
+    set((s) => {
+      const terminals = s.terminals.filter((t) => t.id !== id);
+      const activeTerminal =
+        s.activeTerminal === id ? (terminals.at(-1)?.id ?? null) : s.activeTerminal;
+      return { terminals, activeTerminal };
+    });
+  },
+
+  closeAllTerminals() {
+    set({ terminals: [], activeTerminal: null });
+  },
+
+  setActiveTerminal: (activeTerminal) => set({ activeTerminal }),
+
   setInfoOpen: (infoOpen) => set({ infoOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setAssistantOpen: (assistantOpen) => set({ assistantOpen }),
+  setMenuOpen: (menuOpen) => set({ menuOpen }),
 }));
 
 export const isDirty = (t: OpenTab) => t.draft !== t.original;

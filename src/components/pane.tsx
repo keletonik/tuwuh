@@ -57,7 +57,7 @@ export function Pane({ id }: { id: PaneId }) {
   const openTab = useApp((s) => s.openTab);
   const toast = useApp((s) => s.toast);
   const applyView = useApp((s) => s.applyView);
-  const setTerminal = useApp((s) => s.setTerminalOpen);
+  const addTerminal = useApp((s) => s.addTerminal);
 
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -267,14 +267,11 @@ export function Pane({ id }: { id: PaneId }) {
         { label: "Refresh", onSelect: () => void refresh(id) },
         {
           label: "Open terminal here",
-          onSelect: () => {
-            useApp.setState({ terminalCwd: pane.cwd });
-            setTerminal(true);
-          },
+          onSelect: () => addTerminal(pane.cwd),
         },
       ];
     },
-    [pane.selected, pane.cwd, clipboard, open, doTrash, paste, refresh, id, setTerminal],
+    [pane.selected, pane.cwd, clipboard, open, doTrash, paste, refresh, id, addTerminal],
   );
 
   if (!view) return null;
@@ -360,10 +357,7 @@ export function Pane({ id }: { id: PaneId }) {
           <button
             type="button"
             aria-label="Open terminal here"
-            onClick={() => {
-              useApp.setState({ terminalCwd: pane.cwd });
-              setTerminal(true);
-            }}
+            onClick={() => addTerminal(pane.cwd)}
           >
             <TerminalSquare size={15} />
           </button>
