@@ -76,6 +76,9 @@ export interface AiSettings {
   model: string;
   /** Last-used model per provider. Missing keys fall back to that provider's default. */
   models: Record<string, string>;
+  /** Last-used endpoint per provider. A shared URL used to leak across vendors. */
+  baseUrls: Record<string, string>;
+  /** Legacy single override, kept so older files still deserialise. */
   baseUrl: string | null;
   maxTokens: number;
   timeoutMs: number;
@@ -108,6 +111,9 @@ export interface ViewSettings {
   /** "top" | "right" | "bottom". Unknown values are treated as bottom. */
   terminalDock: "top" | "right" | "bottom";
   restoreLast: boolean;
+  foldersFirst: boolean;
+  iconSize: number;
+  startPath: string | null;
 }
 
 export interface Settings {

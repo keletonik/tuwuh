@@ -3,6 +3,7 @@ import { getSettings, homeDir, onFsChanged } from "@/lib/api";
 import { useApp } from "@/lib/store";
 import { applyTheme } from "@/lib/apply-theme";
 import { Workbench } from "@/components/workbench";
+import { Keymap } from "@/components/keymap";
 
 export default function App() {
   const ready = useApp((s) => s.ready);
@@ -49,5 +50,10 @@ export default function App() {
 
   if (!ready) return <div className="fm-fatal fm-boot">Starting…</div>;
 
-  return <Workbench />;
+  return (
+    <>
+      <Keymap />
+      <Workbench />
+    </>
+  );
 }

@@ -65,6 +65,12 @@ pub struct AiSettings {
     /// previous vendor's model name and 404.
     #[serde(default)]
     pub models: std::collections::BTreeMap<String, String>,
+    /// Last-used endpoint per provider. A single shared URL used to send
+    /// Hugging Face traffic to whatever Ollama override was typed last.
+    #[serde(default)]
+    pub base_urls: std::collections::BTreeMap<String, String>,
+    /// Legacy single override. Read only when `base_urls` has no entry for the
+    /// active provider, so older settings files still load.
     pub base_url: Option<String>,
     pub max_tokens: u32,
     pub timeout_ms: u64,
@@ -80,6 +86,7 @@ impl Default for AiSettings {
             provider: Provider::Anthropic,
             model: Provider::Anthropic.default_model().to_owned(),
             models: BTreeMap::new(),
+            base_urls: BTreeMap::new(),
             base_url: None,
             max_tokens: 2048,
             timeout_ms: 60_000,
@@ -139,6 +146,12 @@ pub struct ViewSettings {
     pub terminal_dock: String,
     #[serde(default = "default_true")]
     pub restore_last: bool,
+    #[serde(default = "default_true")]
+    pub folders_first: bool,
+    #[serde(default = "default_icon_size")]
+    pub icon_size: u16,
+    #[serde(default)]
+    pub start_path: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -147,6 +160,10 @@ fn default_true() -> bool {
 
 fn default_terminal_dock() -> String {
     "bottom".into()
+}
+
+fn default_icon_size() -> u16 {
+    34
 }
 
 impl Default for ViewSettings {
@@ -163,6 +180,9 @@ impl Default for ViewSettings {
             single_click_open: false,
             terminal_dock: default_terminal_dock(),
             restore_last: true,
+            folders_first: true,
+            icon_size: default_icon_size(),
+            start_path: None,
         }
     }
 }
@@ -296,6 +316,9 @@ mod tests {
         assert!(!back.view.show_hidden);
         assert_eq!(back.view.terminal_dock, "bottom");
         assert_eq!(back.view.theme, "forest");
+        assert!(back.view.folders_first);
+        assert_eq!(back.view.icon_size, 34);
+        assert!(back.ai.base_urls.is_empty());
     }
 
     #[test]
@@ -307,6 +330,24 @@ mod tests {
         assert_eq!(back.editor.tab_size, 2);
         assert_eq!(back.ai.provider, Provider::Anthropic);
         assert_eq!(back.view.terminal_dock, "bottom");
+        assert!(back.view.folders_first);
+        assert_eq!(back.view.icon_size, 34);
+    }
+
+    #[test]
+    fn base_urls_round_trip_per_provider() {
+        let mut s = Settings::default();
+        s.ai.base_urls.insert("ollama".into(), "http://localhost:11434/v1".into());
+        s.ai.base_urls.insert("huggingface".into(), "https://router.huggingface.co/v1".into());
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(
+            back.ai.base_urls.get("ollama").map(String::as_str),
+            Some("http://localhost:11434/v1")
+        );
+        assert_ne!(
+            back.ai.base_urls.get("ollama"),
+            back.ai.base_urls.get("huggingface")
+        );
     }
 
     #[test]

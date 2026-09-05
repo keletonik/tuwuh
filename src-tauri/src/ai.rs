@@ -40,6 +40,36 @@ fn base_url_for(p: Provider, configured: Option<&str>) -> String {
     }
 }
 
+fn configured_base<'a>(p: Provider, settings: &'a crate::settings::AiSettings) -> Option<&'a str> {
+    settings
+        .base_urls
+        .get(p.as_str())
+        .map(String::as_str)
+        .filter(|s| !s.trim().is_empty())
+}
+
+fn resolve_model(
+    p: Provider,
+    settings: &crate::settings::AiSettings,
+    requested: Option<&str>,
+) -> String {
+    if let Some(m) = requested.map(str::trim).filter(|m| !m.is_empty()) {
+        return m.to_owned();
+    }
+    if let Some(m) = settings
+        .models
+        .get(p.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        return m.to_owned();
+    }
+    if p == settings.provider && !settings.model.trim().is_empty() {
+        return settings.model.clone();
+    }
+    p.default_model().to_owned()
+}
+
 #[derive(Deserialize)]
 struct AnthropicBlock {
     #[serde(default)]
@@ -97,17 +127,7 @@ pub async fn ai_chat(
 
     let settings = get_settings()?;
     let p = provider.unwrap_or(settings.ai.provider);
-    let chosen_model = model
-        .filter(|m| !m.trim().is_empty())
-        .unwrap_or_else(|| {
-            if provider.is_some_and(|given| given != settings.ai.provider) {
-                // Switching provider without naming a model must not carry the
-                // previous provider's model id across; it would 404.
-                p.default_model().to_owned()
-            } else {
-                settings.ai.model.clone()
-            }
-        });
+    let chosen_model = resolve_model(p, &settings.ai, model.as_deref());
 
     let key = if p.needs_key() {
         Some(read_provider_key(p)?)
@@ -115,7 +135,7 @@ pub async fn ai_chat(
         None
     };
 
-    let base = base_url_for(p, settings.ai.base_url.as_deref());
+    let base = base_url_for(p, configured_base(p, &settings.ai));
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(settings.ai.timeout_ms.clamp(1_000, 300_000)))
         .build()
@@ -256,6 +276,60 @@ mod tests {
         );
         // A blank override must not produce an empty base URL.
         assert_eq!(base_url_for(Provider::Xai, Some("   ")), "https://api.x.ai/v1");
+    }
+
+    #[test]
+    fn resolve_model_reads_the_per_provider_map() {
+        let mut ai = crate::settings::AiSettings::default();
+        ai.provider = Provider::Anthropic;
+        ai.model = "claude-sonnet-5".into();
+        ai.models.insert("ollama".into(), "qwen2.5".into());
+        ai.models.insert("huggingface".into(), "Qwen/Qwen2.5-7B-Instruct:fastest".into());
+        assert_eq!(resolve_model(Provider::Ollama, &ai, None), "qwen2.5");
+        assert_eq!(
+            resolve_model(Provider::Huggingface, &ai, None),
+            "Qwen/Qwen2.5-7B-Instruct:fastest"
+        );
+        assert_ne!(
+            resolve_model(Provider::Ollama, &ai, None),
+            resolve_model(Provider::Anthropic, &ai, None)
+        );
+        assert_eq!(
+            resolve_model(Provider::Ollama, &ai, Some("llama3.2")),
+            "llama3.2"
+        );
+    }
+
+    #[test]
+    fn configured_base_is_per_provider_not_global() {
+        let mut ai = crate::settings::AiSettings::default();
+        ai.provider = Provider::Ollama;
+        ai.base_url = Some("http://localhost:11434/v1".into());
+        // The legacy single field is ignored. The frontend copies it into
+        // base_urls for the provider it was saved with, then clears it.
+        assert_eq!(configured_base(Provider::Ollama, &ai), None);
+        assert_eq!(configured_base(Provider::Openai, &ai), None);
+
+        ai.provider = Provider::Openai;
+        assert_eq!(
+            configured_base(Provider::Openai, &ai),
+            None,
+            "legacy ollama URL must not follow a provider switch"
+        );
+
+        ai.base_urls
+            .insert("huggingface".into(), "https://router.huggingface.co/v1".into());
+        ai.base_urls
+            .insert("ollama".into(), "http://127.0.0.1:8080/v1".into());
+        assert_eq!(
+            configured_base(Provider::Huggingface, &ai),
+            Some("https://router.huggingface.co/v1")
+        );
+        assert_eq!(
+            configured_base(Provider::Ollama, &ai),
+            Some("http://127.0.0.1:8080/v1")
+        );
+        assert_eq!(configured_base(Provider::Openai, &ai), None);
     }
 
     #[test]

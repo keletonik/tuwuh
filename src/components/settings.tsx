@@ -7,13 +7,14 @@
  * webview is the part most likely to leak a secret through a log or a crash
  * report, so it never holds one.
  *
- * Each provider has its own default model. The active model is stored per
- * vendor so switching from Claude to a local Ollama does not send
- * `claude-sonnet-5` to localhost.
+ * Each provider keeps its own default model and its own base URL. Switching
+ * from Claude to a local Ollama must not send `claude-sonnet-5` to localhost,
+ * and an Ollama URL must not follow the next request to Hugging Face.
  */
-import { useCallback, useEffect, useState } from "react";
-import { Check, KeyRound, Trash2, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, KeyRound, PlugZap, Trash2, TriangleAlert } from "lucide-react";
 import {
+  aiChat,
   deleteProviderKey,
   providerStatus,
   setProviderKey,
@@ -22,7 +23,7 @@ import {
   type Settings,
 } from "@/lib/api";
 import { parseTerminalDock, TERMINAL_DOCKS, type TerminalDock } from "@/lib/layout";
-import { modelFor, PROVIDERS } from "@/lib/providers";
+import { baseUrlFor, modelFor, PROVIDERS } from "@/lib/providers";
 import { useApp } from "@/lib/store";
 import { THEME_LIST } from "@/lib/themes";
 
@@ -32,7 +33,16 @@ const DOCK_LABEL: Record<TerminalDock, string> = {
   bottom: "Bottom",
 };
 
-type Section = "ai" | "editor" | "appearance" | "files" | "terminal";
+type Section = "ai" | "editor" | "appearance" | "files" | "terminal" | "keyboard";
+
+const SECTIONS: [Section, string][] = [
+  ["ai", "AI"],
+  ["editor", "Editor"],
+  ["appearance", "Appearance"],
+  ["files", "Files"],
+  ["terminal", "Terminal"],
+  ["keyboard", "Keyboard"],
+];
 
 export function SettingsPanel() {
   const settings = useApp((s) => s.settings);
@@ -46,7 +56,10 @@ export function SettingsPanel() {
   const [status, setStatus] = useState<ProviderStatus[]>([]);
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState<ProviderId | null>(null);
   const [section, setSection] = useState<Section>("ai");
+  const [customOpen, setCustomOpen] = useState<Record<string, boolean>>({});
+  const customRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const reloadStatus = useCallback(() => {
     providerStatus()
@@ -110,6 +123,10 @@ export function SettingsPanel() {
   };
 
   const setModel = (id: ProviderId, model: string) => {
+    const info = PROVIDERS.find((p) => p.id === id);
+    if (info?.models.includes(model)) {
+      setCustomOpen((c) => ({ ...c, [id]: false }));
+    }
     const next = { ...settings.ai.models, [id]: model };
     patch({
       ai: {
@@ -118,6 +135,33 @@ export function SettingsPanel() {
         model: settings.ai.provider === id ? model : settings.ai.model,
       },
     });
+  };
+
+  const setBaseUrl = (id: ProviderId, url: string) => {
+    patch({
+      ai: {
+        ...settings.ai,
+        baseUrls: { ...settings.ai.baseUrls, [id]: url },
+      },
+    });
+  };
+
+  const testProvider = async (id: ProviderId) => {
+    setTesting(id);
+    try {
+      await persistSettings();
+      const reply = await aiChat(
+        [{ role: "user", content: "Reply with the single word pong." }],
+        "You are a connection test. Reply with the single word pong.",
+        id,
+        modelFor(id, settings.ai.models),
+      );
+      toast("success", `${PROVIDERS.find((p) => p.id === id)?.label} (${reply.model}) replied.`);
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setTesting(null);
+    }
   };
 
   return (
@@ -135,15 +179,7 @@ export function SettingsPanel() {
       </header>
 
       <nav className="fm-settings-nav" aria-label="Settings sections">
-        {(
-          [
-            ["ai", "AI"],
-            ["editor", "Editor"],
-            ["appearance", "Appearance"],
-            ["files", "Files"],
-            ["terminal", "Terminal"],
-          ] as const
-        ).map(([id, label]) => (
+        {SECTIONS.map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -160,15 +196,15 @@ export function SettingsPanel() {
           <section>
             <h3>Providers</h3>
             <p className="fm-hint">
-              Keys go to the OS keyring, never the settings file. Each provider keeps its own
-              default model. Requests are made from the backend.
+              Keys go to the OS keyring, never the settings file. Each vendor keeps its own
+              default model and its own endpoint. Requests are made from the backend.
             </p>
 
             {PROVIDERS.map((p) => {
               const s = st(p.id);
               const hasKey = s?.hasKey ?? false;
               const current = modelFor(p.id, settings.ai.models);
-              const custom = !p.models.includes(current);
+              const custom = !p.models.includes(current) || Boolean(customOpen[p.id]);
               return (
                 <div key={p.id} className="fm-provider" data-on={settings.ai.provider === p.id || undefined}>
                   <div className="fm-provider-head">
@@ -209,7 +245,11 @@ export function SettingsPanel() {
                       <select
                         value={custom ? "__custom__" : current}
                         onChange={(e) => {
-                          if (e.target.value === "__custom__") return;
+                          if (e.target.value === "__custom__") {
+                            setCustomOpen((c) => ({ ...c, [p.id]: true }));
+                            requestAnimationFrame(() => customRefs.current[p.id]?.focus());
+                            return;
+                          }
                           setModel(p.id, e.target.value);
                         }}
                       >
@@ -225,6 +265,9 @@ export function SettingsPanel() {
                     <label>
                       Custom model id
                       <input
+                        ref={(el) => {
+                          customRefs.current[p.id] = el;
+                        }}
                         value={current}
                         spellCheck={false}
                         onChange={(e) => setModel(p.id, e.target.value)}
@@ -265,19 +308,27 @@ export function SettingsPanel() {
                     </div>
                   )}
 
-                  {p.defaultBaseUrl && settings.ai.provider === p.id && (
-                    <label className="fm-field">
-                      Base URL
-                      <input
-                        placeholder={p.defaultBaseUrl}
-                        value={settings.ai.baseUrl ?? ""}
-                        onChange={(e) =>
-                          patch({ ai: { ...settings.ai, baseUrl: e.target.value || null } })
-                        }
-                      />
-                      {p.baseUrlHint && <small className="fm-hint">{p.baseUrlHint}</small>}
-                    </label>
-                  )}
+                  <label className="fm-field">
+                    Base URL
+                    <input
+                      placeholder={p.defaultBaseUrl ?? ""}
+                      value={baseUrlFor(p.id, settings.ai.baseUrls)}
+                      spellCheck={false}
+                      onChange={(e) => setBaseUrl(p.id, e.target.value)}
+                    />
+                    {p.baseUrlHint && <small className="fm-hint">{p.baseUrlHint}</small>}
+                  </label>
+
+                  <div className="fm-provider-actions">
+                    <button
+                      type="button"
+                      onClick={() => void testProvider(p.id)}
+                      disabled={testing === p.id || (p.needsKey && !hasKey)}
+                    >
+                      <PlugZap size={14} />
+                      {testing === p.id ? "Testing…" : "Test connection"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -461,11 +512,33 @@ export function SettingsPanel() {
                   <option value="category">Category</option>
                 </select>
               </label>
+              <label>
+                Icon size
+                <select
+                  value={String(settings.view.iconSize)}
+                  onChange={(e) => applyView({ iconSize: Number(e.target.value) || 34 })}
+                >
+                  <option value="24">Small</option>
+                  <option value="34">Medium</option>
+                  <option value="48">Large</option>
+                </select>
+              </label>
+              <label>
+                Start folder
+                <input
+                  placeholder="used when restore last is off"
+                  value={settings.view.startPath ?? ""}
+                  spellCheck={false}
+                  onChange={(e) => applyView({ startPath: e.target.value || null })}
+                />
+              </label>
             </div>
             {(
               [
                 ["showHidden", "Show hidden files"],
                 ["dualPane", "Dual pane"],
+                ["foldersFirst", "Keep folders above files"],
+                ["sortDesc", "Sort descending"],
                 ["confirmDelete", "Confirm before moving to trash"],
                 ["singleClickOpen", "Open with a single click"],
                 ["restoreLast", "Reopen last folders on start"],
@@ -474,7 +547,7 @@ export function SettingsPanel() {
               <label key={key} className="fm-check">
                 <input
                   type="checkbox"
-                  checked={settings.view[key]}
+                  checked={Boolean(settings.view[key])}
                   onChange={(e) => applyView({ [key]: e.target.checked })}
                 />
                 <span>{label}</span>
@@ -521,6 +594,58 @@ export function SettingsPanel() {
                 Leave blank to use your login shell. The next new tab picks this up.
               </small>
             </label>
+          </section>
+        )}
+
+        {section === "keyboard" && (
+          <section>
+            <h3>Shortcuts</h3>
+            <p className="fm-hint">
+              Press Alt by itself for File, View, Go and Terminal. These chords also work without
+              opening the bar.
+            </p>
+            <dl className="fm-keys">
+              <div>
+                <dt>Ctrl + ,</dt>
+                <dd>Settings</dd>
+              </div>
+              <div>
+                <dt>Ctrl + Q</dt>
+                <dd>Quit</dd>
+              </div>
+              <div>
+                <dt>Ctrl + S</dt>
+                <dd>Save the open file</dd>
+              </div>
+              <div>
+                <dt>Alt + Left</dt>
+                <dd>Back</dd>
+              </div>
+              <div>
+                <dt>Alt + Right</dt>
+                <dd>Forward</dd>
+              </div>
+              <div>
+                <dt>Backspace</dt>
+                <dd>Parent folder</dd>
+              </div>
+              <div>
+                <dt>Ctrl + A</dt>
+                <dd>Select all in the pane</dd>
+              </div>
+              <div>
+                <dt>F2</dt>
+                <dd>Rename</dd>
+              </div>
+              <div>
+                <dt>Delete</dt>
+                <dd>Move to trash</dd>
+              </div>
+              <div>
+                <dt>Escape</dt>
+                <dd>Close settings or the menu</dd>
+              </div>
+            </dl>
           </section>
         )}
       </div>

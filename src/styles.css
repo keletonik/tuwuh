@@ -435,11 +435,11 @@ button:focus-visible {
 
 .fm-list[data-view="icons"] {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--fm-icon-cell, 108px), 1fr));
   /* An explicit track height. The list-view row height is a min, not a floor
      tall enough for a 34px icon above two lines of label, so without this the
      cells stay list-height and every label lands on the icon below it. */
-  grid-auto-rows: 96px;
+  grid-auto-rows: var(--fm-icon-row, 96px);
   gap: 2px;
   align-content: start;
 }
@@ -1191,6 +1191,49 @@ button:focus-visible {
 .fm-field-grid input,
 .fm-field select {
   color: var(--fm-fg);
+}
+
+.fm-provider-actions {
+  margin-top: 8px;
+}
+
+.fm-provider-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius);
+}
+
+.fm-provider-actions button:disabled {
+  opacity: 0.45;
+}
+
+.fm-keys {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.fm-keys div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--fm-border);
+}
+
+.fm-keys dt {
+  margin: 0;
+  font: 12px ui-monospace, monospace;
+  color: var(--fm-fg);
+}
+
+.fm-keys dd {
+  margin: 0;
+  color: var(--fm-muted);
 }
 
 .fm-check {

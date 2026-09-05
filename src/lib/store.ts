@@ -18,6 +18,7 @@ import {
   type ViewSettings,
 } from "./api";
 import { parseTerminalDock } from "./layout";
+import { sortEntries } from "./sort";
 
 export type PaneId = "a" | "b";
 
@@ -50,11 +51,20 @@ export interface TermTab {
 
 function normalizeSettings(s: Settings): Settings {
   const theme = s.view.theme;
+  const iconSize = Number(s.view.iconSize);
+  const baseUrls = { ...(s.ai.baseUrls ?? {}) };
+  // A leftover single URL belongs to the provider it was saved with, not to
+  // whoever is selected later.
+  if (Object.keys(baseUrls).length === 0 && s.ai.baseUrl?.trim()) {
+    baseUrls[s.ai.provider] = s.ai.baseUrl.trim();
+  }
   return {
     ...s,
     ai: {
       ...s.ai,
       models: s.ai.models ?? {},
+      baseUrls,
+      baseUrl: null,
     },
     view: {
       ...s.view,
@@ -62,6 +72,9 @@ function normalizeSettings(s: Settings): Settings {
       // "system" was the old Rust default and is not a derived theme.
       theme: !theme || theme === "system" ? "forest" : theme,
       restoreLast: s.view.restoreLast !== false,
+      foldersFirst: s.view.foldersFirst !== false,
+      iconSize: iconSize >= 16 && iconSize <= 64 ? iconSize : 34,
+      startPath: s.view.startPath ?? null,
     },
     lastPaths: s.lastPaths ?? [],
     terminalShell: s.terminalShell ?? null,
@@ -74,6 +87,12 @@ function persist(get: () => State) {
   void saveSettings(s).catch((e) => {
     get().toast("error", e instanceof Error ? e.message : String(e));
   });
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+function persistSoon(get: () => State) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => persist(get), 500);
 }
 
 export interface Toast {
@@ -123,7 +142,13 @@ interface State {
   goForward: (pane: PaneId) => Promise<void>;
   goUp: (pane: PaneId) => Promise<void>;
 
-  select: (pane: PaneId, path: string, mode: "set" | "toggle" | "range") => void;
+  select: (
+    pane: PaneId,
+    path: string,
+    mode: "set" | "toggle" | "range",
+    displayOrder?: string[],
+  ) => void;
+  selectAll: (pane: PaneId, paths: string[]) => void;
   clearSelection: (pane: PaneId) => void;
   setActivePane: (pane: PaneId) => void;
 
@@ -183,10 +208,12 @@ export const useApp = create<State>((set, get) => ({
       panes: { a: emptyPane(home), b: emptyPane(home) },
       ready: true,
     });
+    const fallback = normalised.view.startPath?.trim() || home;
     const startA =
-      normalised.view.restoreLast && normalised.lastPaths[0] ? normalised.lastPaths[0] : home;
+      normalised.view.restoreLast && normalised.lastPaths[0] ? normalised.lastPaths[0] : fallback;
     const startB =
       normalised.view.restoreLast && normalised.lastPaths[1] ? normalised.lastPaths[1] : startA;
+    persist(get);
     await get().navigate("a", startA, false);
     if (normalised.view.dualPane) await get().navigate("b", startB, false);
   },
@@ -231,8 +258,13 @@ export const useApp = create<State>((set, get) => ({
 
       const st = get();
       if (st.settings) {
-        const lastPaths = [st.panes.a.cwd, st.panes.b.cwd];
+        const prev = st.settings.lastPaths ?? [];
+        const lastPaths = [
+          pane === "a" ? st.panes.a.cwd : (prev[0] ?? st.panes.a.cwd),
+          pane === "b" ? st.panes.b.cwd : (prev[1] ?? st.panes.b.cwd),
+        ];
         set({ settings: { ...st.settings, lastPaths } });
+        persistSoon(get);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -313,7 +345,7 @@ export const useApp = create<State>((set, get) => ({
     await get().navigate(pane, parentOf(cwd));
   },
 
-  select(pane, path, mode) {
+  select(pane, path, mode, displayOrder) {
     set((s) => {
       const p = s.panes[pane];
       if (mode === "set") {
@@ -334,8 +366,14 @@ export const useApp = create<State>((set, get) => ({
           },
         };
       }
-      // Range: from the anchor to the clicked row in current display order.
-      const order = p.entries.map((e) => e.path);
+      // Range: from the anchor to the clicked row in what is on screen.
+      const view = s.settings?.view;
+      const order =
+        displayOrder ??
+        (view
+          ? sortEntries(p.entries, view.sortBy, view.sortDesc, view.foldersFirst !== false)
+          : p.entries
+        ).map((e) => e.path);
       const from = p.anchor ? order.indexOf(p.anchor) : -1;
       const to = order.indexOf(path);
       if (from < 0 || to < 0) {
@@ -346,6 +384,19 @@ export const useApp = create<State>((set, get) => ({
         panes: { ...s.panes, [pane]: { ...p, selected: order.slice(lo, hi + 1) } },
       };
     });
+  },
+
+  selectAll(pane, paths) {
+    set((s) => ({
+      panes: {
+        ...s.panes,
+        [pane]: {
+          ...s.panes[pane],
+          selected: [...paths],
+          anchor: paths[0] ?? null,
+        },
+      },
+    }));
   },
 
   clearSelection(pane) {
@@ -407,10 +458,16 @@ export const useApp = create<State>((set, get) => ({
   },
 
   applyView(patch) {
+    const wasDual = get().settings?.view.dualPane;
     set((s) =>
       s.settings ? { settings: { ...s.settings, view: { ...s.settings.view, ...patch } } } : s,
     );
     persist(get);
+    if (patch.dualPane === true && !wasDual) {
+      const s = get();
+      const dest = s.settings?.lastPaths[1] || s.panes.a.cwd;
+      void get().navigate("b", dest, false);
+    }
   },
 
   setSettings(settings) {
@@ -477,29 +534,4 @@ export const useApp = create<State>((set, get) => ({
 
 export const isDirty = (t: OpenTab) => t.draft !== t.original;
 
-/** Sort a listing for display. Directories always lead, whatever the key. */
-export function sortEntries(
-  entries: Entry[],
-  by: ViewSettings["sortBy"],
-  desc: boolean,
-): Entry[] {
-  const out = [...entries].sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
-    switch (by) {
-      case "size":
-        return a.size - b.size;
-      case "mtime":
-        return a.mtime - b.mtime;
-      case "category":
-        return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
-      default:
-        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    }
-  });
-  if (!desc) return out;
-  // Reverse within each kind so directories keep leading after a descending
-  // sort, which is what every file manager does and what users expect.
-  const dirs = out.filter((e) => e.kind === "dir").reverse();
-  const files = out.filter((e) => e.kind === "file").reverse();
-  return [...dirs, ...files];
-}
+export { sortEntries } from "./sort";

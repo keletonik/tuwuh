@@ -42,7 +42,6 @@ export function Workbench() {
   const toasts = useApp((s) => s.toasts);
   const dismissToast = useApp((s) => s.dismissToast);
   const applyView = useApp((s) => s.applyView);
-  const navigate = useApp((s) => s.navigate);
   const addTerminal = useApp((s) => s.addTerminal);
   const closeAllTerminals = useApp((s) => s.closeAllTerminals);
   const closeSettings = useApp((s) => s.closeSettings);
@@ -68,10 +67,7 @@ export function Workbench() {
             aria-pressed={dual}
             data-on={dual || undefined}
             title="Dual pane"
-            onClick={() => {
-              applyView({ dualPane: !dual });
-              if (!dual) void navigate("b", useApp.getState().panes.a.cwd, false);
-            }}
+            onClick={() => applyView({ dualPane: !dual })}
           >
             <Columns2 size={15} />
           </button>

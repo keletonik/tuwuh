@@ -5,7 +5,7 @@
  * a local option must exist, and modelFor must not leak one vendor's id into
  * another.
  */
-import { modelFor, PROVIDERS } from "../src/lib/providers.ts";
+import { baseUrlFor, modelFor, PROVIDERS } from "../src/lib/providers.ts";
 
 let failed = 0;
 const fail = (m) => {
@@ -41,6 +41,17 @@ if (modelFor("anthropic", { anthropic: "claude-haiku-4.5" }) !== "claude-haiku-4
 }
 if (modelFor("openai", { anthropic: "claude-sonnet-5" }) !== PROVIDERS.find((p) => p.id === "openai").defaultModel) {
   fail("openai inherited the anthropic model");
+}
+
+for (const p of PROVIDERS) {
+  if (!p.defaultBaseUrl) fail(`${p.id} has no default base URL`);
+}
+
+if (baseUrlFor("huggingface", { ollama: "http://localhost:11434/v1" }) !== "") {
+  fail("huggingface inherited the ollama base URL");
+}
+if (baseUrlFor("ollama", { ollama: "http://127.0.0.1:8080/v1" }) !== "http://127.0.0.1:8080/v1") {
+  fail("baseUrlFor did not honour a stored ollama URL");
 }
 
 if (failed) {

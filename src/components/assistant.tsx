@@ -117,7 +117,12 @@ export function Assistant() {
     ];
 
     try {
-      const reply = await aiChat(history, SYSTEM);
+      const reply = await aiChat(
+        history,
+        SYSTEM,
+        settings?.ai.provider,
+        settings?.ai.model,
+      );
       const { prose, actions } = splitActions(reply.text);
       setTurns((t) => [
         ...t,

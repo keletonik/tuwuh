@@ -28,7 +28,8 @@ export const PROVIDERS: ProviderInfo[] = [
     keyHint: "sk-ant-…",
     defaultModel: "claude-sonnet-5",
     models: ["claude-sonnet-5", "claude-opus-4.1", "claude-haiku-4.5"],
-    defaultBaseUrl: null,
+    defaultBaseUrl: "https://api.anthropic.com",
+    baseUrlHint: "Leave blank for api.anthropic.com. Override for a proxy.",
   },
   {
     id: "openai",
@@ -38,7 +39,8 @@ export const PROVIDERS: ProviderInfo[] = [
     keyHint: "sk-…",
     defaultModel: "gpt-5",
     models: ["gpt-5", "gpt-5-mini", "o4-mini"],
-    defaultBaseUrl: null,
+    defaultBaseUrl: "https://api.openai.com/v1",
+    baseUrlHint: "Leave blank for api.openai.com. A local proxy uses its own host.",
   },
   {
     id: "xai",
@@ -48,7 +50,8 @@ export const PROVIDERS: ProviderInfo[] = [
     keyHint: "xai-…",
     defaultModel: "grok-4",
     models: ["grok-4", "grok-4-fast"],
-    defaultBaseUrl: null,
+    defaultBaseUrl: "https://api.x.ai/v1",
+    baseUrlHint: "Leave blank for api.x.ai.",
   },
   {
     id: "openrouter",
@@ -101,4 +104,9 @@ export function providerInfo(id: ProviderId): ProviderInfo {
 export function modelFor(id: ProviderId, models: Record<string, string> | undefined): string {
   const stored = models?.[id]?.trim();
   return stored || providerInfo(id).defaultModel;
+}
+
+export function baseUrlFor(id: ProviderId, urls: Record<string, string> | undefined): string {
+  const stored = urls?.[id]?.trim();
+  return stored || "";
 }

@@ -4,9 +4,10 @@
   "description": "",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:contrast && npm run check:layout && npm run check:providers && tsc --noEmit && vite build",
+    "build": "npm run check:contrast && npm run check:layout && npm run check:providers && npm run check:sort && tsc --noEmit && vite build",
     "check:layout": "node --experimental-strip-types scripts/check-layout.mjs",
     "check:providers": "node --experimental-strip-types scripts/check-providers.mjs",
+    "check:sort": "node --experimental-strip-types scripts/check-sort.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",

@@ -58,16 +58,28 @@ export function MenuBar() {
   const terminals = useApp((s) => s.terminals);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    let chord = false;
+    const onDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (e.key !== "Alt" || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      // Alt alone toggles the bar. Alt combined with a letter is left to the
-      // browser and to in-pane shortcuts.
-      e.preventDefault();
-      setMenuOpen(!useApp.getState().menuOpen);
+      if (e.key === "Alt") {
+        chord = false;
+        return;
+      }
+      if (e.altKey) chord = true;
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key !== "Alt") return;
+      if (!chord && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        setMenuOpen(!useApp.getState().menuOpen);
+      }
+      chord = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
   }, [setMenuOpen]);
 
   if (!visible || !settings) return null;
@@ -114,12 +126,7 @@ export function MenuBar() {
           { label: "-" },
           {
             label: view.dualPane ? "Single pane" : "Dual pane",
-            action: () => {
-              applyView({ dualPane: !view.dualPane });
-              if (!view.dualPane) {
-                void useApp.getState().navigate("b", useApp.getState().panes.a.cwd, false);
-              }
-            },
+            action: () => applyView({ dualPane: !view.dualPane }),
           },
           {
             label: view.showHidden ? "Hide hidden files" : "Show hidden files",

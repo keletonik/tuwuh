@@ -6,7 +6,7 @@
  * watcher event. Nothing here mutates a cached tree, so a file deleted from a
  * terminal disappears from the pane without the UI having to be told twice.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -69,7 +69,10 @@ export function Pane({ id }: { id: PaneId }) {
 
   const view = settings?.view;
   const rows = useMemo(
-    () => (view ? sortEntries(pane.entries, view.sortBy, view.sortDesc) : pane.entries),
+    () =>
+      view
+        ? sortEntries(pane.entries, view.sortBy, view.sortDesc, view.foldersFirst !== false)
+        : pane.entries,
     [pane.entries, view],
   );
 
@@ -168,7 +171,8 @@ export function Pane({ id }: { id: PaneId }) {
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (renaming) return;
-      const order = rows.map((r) => r.path);
+      const visible = hits ? hits.map((h) => h.entry) : rows;
+      const order = visible.map((r) => r.path);
       const current = pane.selected[pane.selected.length - 1];
       const index = current ? order.indexOf(current) : -1;
 
@@ -203,7 +207,7 @@ export function Pane({ id }: { id: PaneId }) {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
         e.preventDefault();
-        for (const p of order) select(id, p, "toggle");
+        useApp.getState().selectAll(id, order);
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "x")) {
@@ -216,7 +220,7 @@ export function Pane({ id }: { id: PaneId }) {
         void paste();
       }
     },
-    [renaming, rows, pane.selected, select, id, open, doTrash, paste],
+    [renaming, rows, hits, pane.selected, select, id, open, doTrash, paste],
   );
 
   const menuItems = useCallback(
@@ -367,6 +371,14 @@ export function Pane({ id }: { id: PaneId }) {
       <div
         className="fm-list"
         data-view={view.viewMode}
+        style={
+          view.viewMode === "icons"
+            ? ({
+                "--fm-icon-cell": `${Math.max(88, (view.iconSize || 34) + 74)}px`,
+                "--fm-icon-row": `${Math.max(80, (view.iconSize || 34) + 62)}px`,
+              } as CSSProperties)
+            : undefined
+        }
         ref={listRef}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -415,7 +427,12 @@ export function Pane({ id }: { id: PaneId }) {
               data-hidden={entry.isHidden || undefined}
               onMouseDown={(e) => {
                 e.stopPropagation();
-                select(id, entry.path, e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "set");
+                select(
+                  id,
+                  entry.path,
+                  e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "set",
+                  shown.map((row) => row.path),
+                );
               }}
               onDoubleClick={() => void open(entry)}
               onClick={() => {
@@ -430,7 +447,10 @@ export function Pane({ id }: { id: PaneId }) {
               title={entry.symlinkTarget ? `${entry.name} → ${entry.symlinkTarget}` : entry.name}
             >
               <span className="fm-col fm-col-name">
-                <FileIcon entry={entry} size={view.viewMode === "icons" ? 34 : 16} />
+                <FileIcon
+                  entry={entry}
+                  size={view.viewMode === "icons" ? view.iconSize || 34 : 16}
+                />
                 {renaming === entry.path ? (
                   <input
                     className="fm-rename"
