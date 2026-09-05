@@ -9,18 +9,35 @@
 import { create } from "zustand";
 import {
   listDir,
+  listTrash,
   parentOf,
   retainWatches,
   saveSettings,
   watchDir,
   type Entry,
   type Settings,
+  type TrashItem,
   type ViewSettings,
 } from "./api";
 import { parseTerminalDock } from "./layout";
 import { sortEntries } from "./sort";
 
 export type PaneId = "a" | "b";
+
+export interface FolderTab {
+  id: string;
+  path: string;
+}
+
+export interface Clipboard {
+  paths: string[];
+  cut: boolean;
+}
+
+export type UndoOp =
+  | { kind: "trash"; ids: string[] }
+  | { kind: "rename"; from: string; to: string }
+  | { kind: "create"; path: string };
 
 export interface Pane {
   cwd: string;
@@ -32,6 +49,10 @@ export interface Pane {
   anchor: string | null;
   history: string[];
   historyIndex: number;
+  tabs: FolderTab[];
+  activeTabId: string;
+  /** Trash is a view, not a directory, so it is not a cwd. */
+  special: "trash" | null;
 }
 
 export interface OpenTab {
@@ -101,7 +122,10 @@ export interface Toast {
   text: string;
 }
 
+let folderTabSeq = 1;
+
 function emptyPane(cwd: string): Pane {
+  const id = `ftab-${folderTabSeq++}`;
   return {
     cwd,
     entries: [],
@@ -111,6 +135,9 @@ function emptyPane(cwd: string): Pane {
     anchor: null,
     history: [cwd],
     historyIndex: 0,
+    tabs: [{ id, path: cwd }],
+    activeTabId: id,
+    special: null,
   };
 }
 
@@ -133,10 +160,17 @@ interface State {
   menuOpen: boolean;
 
   toasts: Toast[];
+  clipboard: Clipboard | null;
+  undoStack: UndoOp[];
+  propertiesPath: string | null;
+  trashItems: TrashItem[];
+  editLocation: PaneId | null;
+  editFilter: PaneId | null;
 
   boot: (home: string, settings: Settings) => Promise<void>;
   navigate: (pane: PaneId, path: string, pushHistory?: boolean) => Promise<void>;
   refresh: (pane?: PaneId) => Promise<void>;
+  refreshAll: () => Promise<void>;
   refreshPath: (path: string) => Promise<void>;
   goBack: (pane: PaneId) => Promise<void>;
   goForward: (pane: PaneId) => Promise<void>;
@@ -149,8 +183,22 @@ interface State {
     displayOrder?: string[],
   ) => void;
   selectAll: (pane: PaneId, paths: string[]) => void;
+  invertSelection: (pane: PaneId, paths: string[]) => void;
   clearSelection: (pane: PaneId) => void;
   setActivePane: (pane: PaneId) => void;
+
+  setClipboard: (clip: Clipboard | null) => void;
+  pushUndo: (op: UndoOp) => void;
+  popUndo: () => UndoOp | undefined;
+  setPropertiesPath: (path: string | null) => void;
+  setEditLocation: (pane: PaneId | null) => void;
+  setEditFilter: (pane: PaneId | null) => void;
+
+  openFolderTab: (pane: PaneId, path: string) => Promise<void>;
+  closeFolderTab: (pane: PaneId, tabId: string) => Promise<void>;
+  activateFolderTab: (pane: PaneId, tabId: string) => Promise<void>;
+  openTrash: (pane: PaneId) => Promise<void>;
+  loadTrash: () => Promise<void>;
 
   openTab: (entry: Entry, text: string, truncated: boolean) => void;
   closeTab: (path: string) => void;
@@ -199,6 +247,12 @@ export const useApp = create<State>((set, get) => ({
   menuOpen: false,
 
   toasts: [],
+  clipboard: null,
+  undoStack: [],
+  propertiesPath: null,
+  trashItems: [],
+  editLocation: null,
+  editFilter: null,
 
   async boot(home, settings) {
     const normalised = normalizeSettings(settings);
@@ -244,8 +298,12 @@ export const useApp = create<State>((set, get) => ({
               error: null,
               selected: [],
               anchor: null,
+              special: null,
               history,
               historyIndex: pushHistory ? history.length - 1 : prev.historyIndex,
+              tabs: prev.tabs.map((t) =>
+                t.id === prev.activeTabId ? { ...t, path } : t,
+              ),
             },
           },
         };
@@ -277,8 +335,17 @@ export const useApp = create<State>((set, get) => ({
     }
   },
 
+  async refreshAll() {
+    await get().refresh("a");
+    await get().refresh("b");
+  },
+
   async refresh(pane) {
     const target = pane ?? get().activePane;
+    if (get().panes[target].special === "trash") {
+      await get().loadTrash();
+      return;
+    }
     const { cwd } = get().panes[target];
     const showHidden = get().settings?.view.showHidden ?? false;
     try {
@@ -340,6 +407,10 @@ export const useApp = create<State>((set, get) => ({
   },
 
   async goUp(pane) {
+    if (get().panes[pane].special === "trash") {
+      await get().navigate(pane, get().panes[pane].cwd, false);
+      return;
+    }
     const { cwd } = get().panes[pane];
     if (cwd === "/") return;
     await get().navigate(pane, parentOf(cwd));
@@ -399,6 +470,23 @@ export const useApp = create<State>((set, get) => ({
     }));
   },
 
+  invertSelection(pane, paths) {
+    set((s) => {
+      const have = new Set(s.panes[pane].selected);
+      const selected = paths.filter((p) => !have.has(p));
+      return {
+        panes: {
+          ...s.panes,
+          [pane]: {
+            ...s.panes[pane],
+            selected,
+            anchor: selected[0] ?? null,
+          },
+        },
+      };
+    });
+  },
+
   clearSelection(pane) {
     set((s) => ({
       panes: { ...s.panes, [pane]: { ...s.panes[pane], selected: [], anchor: null } },
@@ -407,6 +495,110 @@ export const useApp = create<State>((set, get) => ({
 
   setActivePane(pane) {
     set({ activePane: pane });
+  },
+
+  setClipboard(clipboard) {
+    set({ clipboard });
+  },
+
+  pushUndo(op) {
+    set((s) => ({ undoStack: [...s.undoStack.slice(-19), op] }));
+  },
+
+  popUndo() {
+    const stack = get().undoStack;
+    if (!stack.length) return undefined;
+    const op = stack[stack.length - 1];
+    set({ undoStack: stack.slice(0, -1) });
+    return op;
+  },
+
+  setPropertiesPath(propertiesPath) {
+    set({ propertiesPath });
+  },
+
+  setEditLocation(editLocation) {
+    set({ editLocation, editFilter: editLocation ? null : get().editFilter });
+  },
+
+  setEditFilter(editFilter) {
+    set({ editFilter, editLocation: editFilter ? null : get().editLocation });
+  },
+
+  async openFolderTab(pane, path) {
+    const id = `ftab-${folderTabSeq++}`;
+    set((s) => ({
+      panes: {
+        ...s.panes,
+        [pane]: {
+          ...s.panes[pane],
+          tabs: [...s.panes[pane].tabs, { id, path }],
+          activeTabId: id,
+        },
+      },
+    }));
+    await get().navigate(pane, path);
+  },
+
+  async closeFolderTab(pane, tabId) {
+    const p = get().panes[pane];
+    if (p.tabs.length <= 1) return;
+    const tabs = p.tabs.filter((t) => t.id !== tabId);
+    const activeTabId =
+      p.activeTabId === tabId ? (tabs.at(-1)?.id ?? tabs[0].id) : p.activeTabId;
+    const next = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+    set((s) => ({
+      panes: { ...s.panes, [pane]: { ...s.panes[pane], tabs, activeTabId } },
+    }));
+    if (next.path !== p.cwd || p.special) await get().navigate(pane, next.path);
+  },
+
+  async activateFolderTab(pane, tabId) {
+    const tab = get().panes[pane].tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    set((s) => ({
+      panes: { ...s.panes, [pane]: { ...s.panes[pane], activeTabId: tabId } },
+    }));
+    await get().navigate(pane, tab.path, false);
+  },
+
+  async loadTrash() {
+    try {
+      const trashItems = await listTrash();
+      set({ trashItems });
+    } catch (e) {
+      get().toast("error", e instanceof Error ? e.message : String(e));
+    }
+  },
+
+  async openTrash(pane) {
+    set((s) => ({
+      panes: {
+        ...s.panes,
+        [pane]: { ...s.panes[pane], special: "trash", loading: true, error: null },
+      },
+    }));
+    try {
+      const trashItems = await listTrash();
+      set((s) => ({
+        trashItems,
+        panes: {
+          ...s.panes,
+          [pane]: { ...s.panes[pane], special: "trash", loading: false, selected: [], anchor: null },
+        },
+      }));
+    } catch (e) {
+      set((s) => ({
+        panes: {
+          ...s.panes,
+          [pane]: {
+            ...s.panes[pane],
+            loading: false,
+            error: e instanceof Error ? e.message : String(e),
+          },
+        },
+      }));
+    }
   },
 
   openTab(entry, text, truncated) {
@@ -463,6 +655,9 @@ export const useApp = create<State>((set, get) => ({
       s.settings ? { settings: { ...s.settings, view: { ...s.settings.view, ...patch } } } : s,
     );
     persist(get);
+    if (Object.prototype.hasOwnProperty.call(patch, "showHidden")) {
+      void get().refreshAll();
+    }
     if (patch.dualPane === true && !wasDual) {
       const s = get();
       const dest = s.settings?.lastPaths[1] || s.panes.a.cwd;

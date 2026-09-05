@@ -7,11 +7,15 @@ filesystem through a Rust backend.
 ## What it does
 
 **File management.** Places sidebar from the XDG user directories, bookmarks,
-breadcrumbs, back and forward history, four view modes (details, icons,
-compact, tree), sorting by name, size, modified time or category, hidden-file
-toggle, dual pane, search scoped to the current folder, and a context menu with
-copy, cut, paste, rename and trash. Deletions go to the XDG trash by default;
-permanent deletion is a separate, explicit action.
+trash, devices, breadcrumbs with an editable location bar (Ctrl L), back and
+forward history, folder tabs, four view modes (details, icons, compact, tree
+with in-place expand), sorting by name, size, modified time or category,
+hidden-file toggle, dual pane (F3), search, filter (Ctrl I), type-ahead,
+drag and drop, and a context menu with copy, cut, paste, rename, duplicate,
+symlink, compress, extract, copy location, copy/move to the other pane, trash
+and permanent delete. Deletions go to the XDG trash by default. Properties
+(Alt Enter) can change Unix permission bits. Ctrl Z undoes the last trash,
+rename or create.
 
 **Categorised icons.** Every file is classified in the backend by extension, and
 by the executable bit when there is no extension, into one of seventeen
@@ -47,12 +51,10 @@ right or bottom, and open several tabs.
 
 ## What it does not do yet
 
-- Drag and drop between panes.
-- Archive browsing, or mounting remote filesystems (no KIO equivalent).
+- Archive browsing as a filesystem, or remote protocols (no KIO equivalent).
 - Thumbnails for video or PDF. Images preview in the info panel; everything else
   shows metadata only.
-- A tree view that expands in place. The tree mode currently lists like the
-  compact mode.
+- Baloo tags, ratings, Git status, or KDE service menus.
 - Any visual design pass. The layout is functional and the palette is carried
   over, but the interface has not been designed, only built.
 

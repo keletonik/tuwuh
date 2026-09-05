@@ -77,6 +77,10 @@ want is absent it has to be added rather than assumed:
   fs      list_dir stat_path read_text_file write_text_file create_dir
           create_file rename_path copy_path move_path trash_path
           delete_permanent home_dir places search_files dir_size read_preview
+          open_path duplicate_path create_symlink chmod_path free_space
+          list_mounts list_trash restore_trash empty_trash purge_trash
+          compress_paths extract_archive
+  window  new_window
   pty     spawn_terminal write_terminal resize_terminal close_terminal
   watcher watch_dir unwatch_dir retain_watches
   config  get_settings save_settings set_provider_key has_provider_key

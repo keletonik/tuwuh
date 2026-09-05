@@ -235,6 +235,47 @@ export const searchFiles = (
 export const dirSize = (path: string) => call<number>("dir_size", { path });
 export const readPreview = (path: string) => call<string>("read_preview", { path });
 
+export const openPath = (path: string) => call<void>("open_path", { path });
+export const duplicatePath = (path: string) => call<string>("duplicate_path", { path });
+export const createSymlink = (target: string, link: string) =>
+  call<void>("create_symlink", { target, link });
+export const chmodPath = (path: string, mode: number) => call<void>("chmod_path", { path, mode });
+
+export interface FreeSpace {
+  path: string;
+  total: number;
+  available: number;
+}
+
+export const freeSpace = (path: string) => call<FreeSpace>("free_space", { path });
+
+export interface Mount {
+  path: string;
+  label: string;
+  fs: string;
+}
+
+export const listMounts = () => call<Mount[]>("list_mounts");
+
+export interface TrashItem {
+  id: string;
+  name: string;
+  original: string;
+  deletedAt: number;
+}
+
+export const listTrash = () => call<TrashItem[]>("list_trash");
+export const restoreTrash = (ids: string[]) => call<void>("restore_trash", { ids });
+export const emptyTrash = () => call<void>("empty_trash");
+export const purgeTrash = (ids: string[]) => call<void>("purge_trash", { ids });
+
+export const compressPaths = (paths: string[], dest: string) =>
+  call<string>("compress_paths", { paths, dest });
+export const extractArchive = (path: string, destDir: string) =>
+  call<void>("extract_archive", { path, destDir });
+
+export const newWindow = () => call<void>("new_window");
+
 /* Terminal --------------------------------------------------------------- */
 
 export const spawnTerminal = (cwd: string, cols: number, rows: number) =>

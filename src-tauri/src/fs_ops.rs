@@ -11,6 +11,7 @@ use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 use crate::error::{AppError, AppResult};
 
@@ -391,12 +392,22 @@ fn unique_destination(dir: &Path, name: &str) -> PathBuf {
     if !candidate.exists() {
         return candidate;
     }
-    let path = Path::new(name);
-    let stem = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| name.to_owned());
-    let ext = path.extension().map(|e| e.to_string_lossy().into_owned());
+    let lower = name.to_ascii_lowercase();
+    let (stem, ext) = {
+        const COMPOUND: &[&str] = &["tar.gz", "tar.xz", "tar.bz2", "tar.zst", "tgz"];
+        if let Some(rest) = COMPOUND.iter().copied().find(|e| lower.ends_with(&format!(".{e}"))) {
+            let cut = name.len() - rest.len() - 1;
+            (name[..cut].to_owned(), Some(rest.to_owned()))
+        } else {
+            let path = Path::new(name);
+            (
+                path.file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| name.to_owned()),
+                path.extension().map(|e| e.to_string_lossy().into_owned()),
+            )
+        }
+    };
 
     for n in 2..10_000 {
         let next = match &ext {
@@ -659,6 +670,335 @@ pub fn dir_size(path: String) -> AppResult<u64> {
     Ok(walk(&p))
 }
 
+/// Open a path with the desktop's default handler (`xdg-open`). Directories,
+/// binaries and office documents all go this way; the editor is a separate,
+/// explicit choice in the UI.
+#[tauri::command]
+pub fn open_path(path: String) -> AppResult<()> {
+    let p = checked(&path)?;
+    if !p.exists() {
+        return Err(AppError::NotFound(path));
+    }
+    Command::new("xdg-open")
+        .arg(&p)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| AppError::Io(format!("xdg-open {path}: {e}")))?;
+    Ok(())
+}
+
+/// Duplicate into the same directory. Relies on `unique_destination` so a
+/// second copy becomes `name (2).ext` rather than overwriting.
+#[tauri::command]
+pub fn duplicate_path(path: String) -> AppResult<String> {
+    let p = checked(&path)?;
+    let parent = p
+        .parent()
+        .ok_or_else(|| AppError::InvalidPath(format!("{path} has no parent")))?;
+    copy_path(path, parent.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn create_symlink(target: String, link: String) -> AppResult<()> {
+    let t = checked(&target)?;
+    let l = checked(&link)?;
+    if l.exists() {
+        return Err(AppError::Exists(link));
+    }
+    std::os::unix::fs::symlink(&t, &l)
+        .map_err(|e| AppError::Io(format!("symlink {link} -> {target}: {e}")))
+}
+
+/// Set Unix permission bits. The UI sends the nine `rwx` bits (and optionally
+/// setuid/setgid/sticky); file-type bits are left to the kernel.
+#[tauri::command]
+pub fn chmod_path(path: String, mode: u32) -> AppResult<()> {
+    let p = checked(&path)?;
+    let mode = mode & 0o7777;
+    fs::set_permissions(&p, fs::Permissions::from_mode(mode))
+        .map_err(|e| AppError::Io(format!("chmod {path}: {e}")))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeSpace {
+    pub path: String,
+    pub total: u64,
+    pub available: u64,
+}
+
+#[tauri::command]
+pub fn free_space(path: String) -> AppResult<FreeSpace> {
+    let p = checked(&path)?;
+    let cstr = std::ffi::CString::new(p.to_string_lossy().as_bytes())
+        .map_err(|_| AppError::InvalidPath(path.clone()))?;
+    let mut buf = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
+    let rc = unsafe { libc::statvfs(cstr.as_ptr(), buf.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(AppError::Io(format!(
+            "statvfs {path}: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    let s = unsafe { buf.assume_init() };
+    let frsize = s.f_frsize as u64;
+    Ok(FreeSpace {
+        path,
+        total: s.f_blocks as u64 * frsize,
+        available: s.f_bavail as u64 * frsize,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mount {
+    pub path: String,
+    pub label: String,
+    pub fs: String,
+}
+
+/// Removable and extra filesystems. `/` and `$HOME` already live in Places, so
+/// this list is the things Dolphin would put under Devices.
+#[tauri::command]
+pub fn list_mounts() -> AppResult<Vec<Mount>> {
+    let text = fs::read_to_string("/proc/mounts").unwrap_or_default();
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        let _src = parts.next();
+        let dest = match parts.next() {
+            Some(d) => d.replace("\\040", " "),
+            None => continue,
+        };
+        let fs = parts.next().unwrap_or("");
+        if !dest.starts_with("/run/media/")
+            && !dest.starts_with("/media/")
+            && !dest.starts_with("/mnt/")
+        {
+            continue;
+        }
+        if !seen.insert(dest.clone()) {
+            continue;
+        }
+        let label = dest.rsplit('/').next().unwrap_or(&dest).to_owned();
+        out.push(Mount {
+            path: dest,
+            label,
+            fs: fs.to_owned(),
+        });
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashItemDto {
+    pub id: String,
+    pub name: String,
+    pub original: String,
+    pub deleted_at: i64,
+}
+
+#[tauri::command]
+pub fn list_trash() -> AppResult<Vec<TrashItemDto>> {
+    let items = trash::os_limited::list().map_err(|e| AppError::Io(format!("trash list: {e}")))?;
+    let mut out: Vec<_> = items
+        .into_iter()
+        .map(|i| TrashItemDto {
+            id: i.id.to_string_lossy().into_owned(),
+            name: i.name.to_string_lossy().into_owned(),
+            original: i.original_path().to_string_lossy().into_owned(),
+            deleted_at: i.time_deleted,
+        })
+        .collect();
+    out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn restore_trash(ids: Vec<String>) -> AppResult<()> {
+    let items = trash::os_limited::list().map_err(|e| AppError::Io(format!("trash list: {e}")))?;
+    let pick: Vec<_> = items
+        .into_iter()
+        .filter(|i| ids.iter().any(|id| i.id.to_string_lossy() == *id))
+        .collect();
+    if pick.is_empty() {
+        return Err(AppError::NotFound("no matching trash items".into()));
+    }
+    trash::os_limited::restore_all(pick).map_err(|e| AppError::Io(format!("restore: {e}")))
+}
+
+#[tauri::command]
+pub fn empty_trash() -> AppResult<()> {
+    let items = trash::os_limited::list().map_err(|e| AppError::Io(format!("trash list: {e}")))?;
+    trash::os_limited::purge_all(items).map_err(|e| AppError::Io(format!("empty trash: {e}")))
+}
+
+#[tauri::command]
+pub fn purge_trash(ids: Vec<String>) -> AppResult<()> {
+    let items = trash::os_limited::list().map_err(|e| AppError::Io(format!("trash list: {e}")))?;
+    let pick: Vec<_> = items
+        .into_iter()
+        .filter(|i| ids.iter().any(|id| i.id.to_string_lossy() == *id))
+        .collect();
+    if pick.is_empty() {
+        return Err(AppError::NotFound("no matching trash items".into()));
+    }
+    trash::os_limited::purge_all(pick).map_err(|e| AppError::Io(format!("purge trash: {e}")))
+}
+
+fn run_checked(mut cmd: Command, label: &str) -> AppResult<()> {
+    let status = cmd
+        .status()
+        .map_err(|e| AppError::Io(format!("{label}: {e}")))?;
+    if !status.success() {
+        return Err(AppError::Io(format!(
+            "{label} exited {}",
+            status.code().unwrap_or(-1)
+        )));
+    }
+    Ok(())
+}
+
+/// Compress the given paths into `dest`. Items must share a parent, matching
+/// the usual "compress this selection" action. `.tar.gz` is the default; `.zip`
+/// and `.tar` are accepted when the destination name asks for them.
+#[tauri::command]
+pub fn compress_paths(paths: Vec<String>, dest: String) -> AppResult<String> {
+    if paths.is_empty() {
+        return Err(AppError::InvalidPath("nothing to compress".into()));
+    }
+    let dest_p = checked(&dest)?;
+    let dest_parent = dest_p
+        .parent()
+        .ok_or_else(|| AppError::InvalidPath(dest.clone()))?;
+    let dest_name = dest_p
+        .file_name()
+        .ok_or_else(|| AppError::InvalidPath(dest.clone()))?
+        .to_string_lossy()
+        .into_owned();
+    let final_dest = unique_destination(dest_parent, &dest_name);
+
+    let mut names = Vec::new();
+    let mut common_parent: Option<PathBuf> = None;
+    for p in &paths {
+        let pb = checked(p)?;
+        let par = pb
+            .parent()
+            .ok_or_else(|| AppError::InvalidPath(p.clone()))?
+            .to_path_buf();
+        match &common_parent {
+            None => common_parent = Some(par),
+            Some(c) if c == &par => {}
+            Some(_) => {
+                return Err(AppError::InvalidPath(
+                    "compress items from one folder at a time".into(),
+                ));
+            }
+        }
+        names.push(
+            pb.file_name()
+                .ok_or_else(|| AppError::InvalidPath(p.clone()))?
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+    let cwd = common_parent.unwrap();
+    let dest_s = final_dest.to_string_lossy().into_owned();
+    let lower = dest_s.to_ascii_lowercase();
+
+    if lower.ends_with(".zip") {
+        run_checked(
+            {
+                let mut c = Command::new("zip");
+                c.current_dir(&cwd)
+                    .arg("-r")
+                    .arg("-q")
+                    .arg(&final_dest)
+                    .args(&names);
+                c
+            },
+            "zip",
+        )?;
+    } else if lower.ends_with(".tar") {
+        run_checked(
+            {
+                let mut c = Command::new("tar");
+                c.current_dir(&cwd)
+                    .arg("-cf")
+                    .arg(&final_dest)
+                    .args(&names);
+                c
+            },
+            "tar",
+        )?;
+    } else if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
+        run_checked(
+            {
+                let mut c = Command::new("tar");
+                c.current_dir(&cwd)
+                    .arg("-czf")
+                    .arg(&final_dest)
+                    .args(&names);
+                c
+            },
+            "tar",
+        )?;
+    } else {
+        return Err(AppError::InvalidPath(
+            "compress to .tar.gz, .tgz, .tar or .zip".into(),
+        ));
+    }
+    Ok(dest_s)
+}
+
+#[tauri::command]
+pub fn extract_archive(path: String, dest_dir: String) -> AppResult<()> {
+    let src = checked(&path)?;
+    let dest = checked(&dest_dir)?;
+    if !src.is_file() {
+        return Err(AppError::InvalidPath(format!("{path} is not a file")));
+    }
+    fs::create_dir_all(&dest).map_err(|e| AppError::Io(format!("{}: {e}", dest.display())))?;
+    let name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if name.ends_with(".zip") {
+        run_checked(
+            {
+                let mut c = Command::new("unzip");
+                c.arg("-q").arg("-o").arg(&src).arg("-d").arg(&dest);
+                c
+            },
+            "unzip",
+        )
+    } else if name.ends_with(".tar.gz")
+        || name.ends_with(".tgz")
+        || name.ends_with(".tar")
+        || name.ends_with(".tar.xz")
+        || name.ends_with(".tar.bz2")
+        || name.ends_with(".tar.zst")
+    {
+        run_checked(
+            {
+                let mut c = Command::new("tar");
+                c.arg("-xf").arg(&src).arg("-C").arg(&dest);
+                c
+            },
+            "tar",
+        )
+    } else {
+        Err(AppError::InvalidPath(format!(
+            "{path} is not a .zip, .tar, .tar.gz, .tgz, .tar.xz, .tar.bz2 or .tar.zst archive"
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,6 +1030,14 @@ mod tests {
         fs::write(&first, b"x").unwrap();
         let second = unique_destination(&dir, "note.txt");
         assert!(second.ends_with("note (2).txt"), "got {second:?}");
+        let gz = unique_destination(&dir, "pack.tar.gz");
+        assert!(gz.ends_with("pack.tar.gz"));
+        fs::write(&gz, b"x").unwrap();
+        let gz2 = unique_destination(&dir, "pack.tar.gz");
+        assert!(
+            gz2.ends_with("pack (2).tar.gz"),
+            "compound extension must stay intact, got {gz2:?}"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -733,5 +1081,163 @@ mod tests {
         assert!(!r.is_utf8);
         assert!(r.text.is_empty());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tuwuh-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn open_path_rejects_relative_and_missing() {
+        assert!(open_path("relative".into()).is_err());
+        assert!(open_path("/no/such/tuwuh/path/for/open".into()).is_err());
+    }
+
+    #[test]
+    fn duplicate_leaves_the_original_and_sidesteps_the_name() {
+        let dir = scratch("dup");
+        let f = dir.join("note.txt");
+        fs::write(&f, b"hello").unwrap();
+        let copy = duplicate_path(f.to_string_lossy().into_owned()).unwrap();
+        assert!(copy.ends_with("note (2).txt"), "got {copy}");
+        assert_eq!(fs::read_to_string(&f).unwrap(), "hello");
+        assert_eq!(fs::read_to_string(&copy).unwrap(), "hello");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn symlink_points_at_the_target_and_refuses_a_collision() {
+        let dir = scratch("link");
+        let target = dir.join("real.txt");
+        let link = dir.join("alias.txt");
+        fs::write(&target, b"x").unwrap();
+        create_symlink(
+            target.to_string_lossy().into_owned(),
+            link.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_link(&link).unwrap(), target);
+        let again = create_symlink(
+            target.to_string_lossy().into_owned(),
+            link.to_string_lossy().into_owned(),
+        );
+        assert!(again.is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn chmod_sets_the_nine_bits() {
+        let dir = scratch("chmod");
+        let f = dir.join("a.txt");
+        fs::write(&f, b"x").unwrap();
+        chmod_path(f.to_string_lossy().into_owned(), 0o640).unwrap();
+        assert_eq!(fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o640);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn free_space_reports_a_live_filesystem() {
+        let info = free_space("/tmp".into()).unwrap();
+        assert!(info.total > 0, "total was 0");
+        assert!(info.available <= info.total);
+    }
+
+    #[test]
+    fn compress_and_extract_round_trip_tar_gz() {
+        let dir = scratch("arch");
+        let a = dir.join("a.txt");
+        let b = dir.join("b.txt");
+        fs::write(&a, b"alpha").unwrap();
+        fs::write(&b, b"beta").unwrap();
+        let dest = dir.join("pack.tar.gz");
+        let made = compress_paths(
+            vec![
+                a.to_string_lossy().into_owned(),
+                b.to_string_lossy().into_owned(),
+            ],
+            dest.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+        assert!(Path::new(&made).is_file());
+        let out = dir.join("out");
+        extract_archive(made, out.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(fs::read_to_string(out.join("a.txt")).unwrap(), "alpha");
+        assert_eq!(fs::read_to_string(out.join("b.txt")).unwrap(), "beta");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn extract_rejects_an_unknown_format() {
+        let dir = scratch("badarch");
+        let f = dir.join("notes.txt");
+        fs::write(&f, b"not an archive").unwrap();
+        let r = extract_archive(
+            f.to_string_lossy().into_owned(),
+            dir.to_string_lossy().into_owned(),
+        );
+        assert!(r.is_err(), "a text file must not be handed to tar");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn compress_refuses_an_empty_selection_and_a_mixed_parent() {
+        assert!(compress_paths(vec![], "/tmp/x.tar.gz".into()).is_err());
+        let a = scratch("mix-a");
+        let b = scratch("mix-b");
+        fs::write(a.join("f"), b"x").unwrap();
+        fs::write(b.join("g"), b"y").unwrap();
+        let r = compress_paths(
+            vec![
+                a.join("f").to_string_lossy().into_owned(),
+                b.join("g").to_string_lossy().into_owned(),
+            ],
+            a.join("x.tar.gz").to_string_lossy().into_owned(),
+        );
+        assert!(r.is_err());
+        fs::remove_dir_all(&a).unwrap();
+        fs::remove_dir_all(&b).unwrap();
+    }
+
+    #[test]
+    fn trash_round_trip_restore() {
+        let dir = scratch("trash");
+        let f = dir.join("gone.txt");
+        fs::write(&f, b"restore-me").unwrap();
+        let path = f.to_string_lossy().into_owned();
+        trash_path(vec![path.clone()]).unwrap();
+        assert!(!f.exists());
+        let listed = list_trash().unwrap();
+        let hit = listed
+            .iter()
+            .find(|i| i.original == path)
+            .expect("trashed file must appear in the list");
+        restore_trash(vec![hit.id.clone()]).unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "restore-me");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn list_mounts_is_well_formed() {
+        let mounts = list_mounts().unwrap();
+        for m in mounts {
+            assert!(
+                m.path.starts_with("/run/media/")
+                    || m.path.starts_with("/media/")
+                    || m.path.starts_with("/mnt/"),
+                "unexpected mount {}",
+                m.path
+            );
+            assert!(!m.label.is_empty());
+        }
     }
 }

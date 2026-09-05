@@ -15,10 +15,12 @@ import {
   Image,
   Monitor,
   Music,
+  Trash2,
+  Usb,
   Video,
   type LucideIcon,
 } from "lucide-react";
-import { basename, places, saveSettings, type Place } from "@/lib/api";
+import { basename, emptyTrash, listMounts, places, saveSettings, type Mount, type Place } from "@/lib/api";
 import { useApp } from "@/lib/store";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -40,11 +42,16 @@ export function Sidebar() {
   const setSettings = useApp((s) => s.setSettings);
   const toast = useApp((s) => s.toast);
   const [list, setList] = useState<Place[]>([]);
+  const [mounts, setMounts] = useState<Mount[]>([]);
+  const special = useApp((s) => s.panes[s.activePane].special);
 
   useEffect(() => {
     places()
       .then(setList)
       .catch((e) => toast("error", e.message));
+    listMounts()
+      .then(setMounts)
+      .catch(() => undefined);
   }, [toast]);
 
   if (!settings) return null;
@@ -86,6 +93,55 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <h2 className="fm-sidebar-title">
+        <span>Trash</span>
+        <button
+          type="button"
+          className="fm-bookmark-toggle"
+          title="Empty trash"
+          aria-label="Empty trash"
+          onClick={() => {
+            if (!window.confirm("Permanently empty the trash?")) return;
+            void emptyTrash()
+              .then(() => useApp.getState().loadTrash())
+              .then(() => toast("success", "Trash emptied."))
+              .catch((e) => toast("error", e instanceof Error ? e.message : String(e)));
+          }}
+        >
+          <Trash2 size={14} />
+        </button>
+      </h2>
+      <nav>
+        <button
+          type="button"
+          data-current={special === "trash" || undefined}
+          onClick={() => void useApp.getState().openTrash(activePane)}
+        >
+          <Trash2 size={15} />
+          <span>Trash</span>
+        </button>
+      </nav>
+
+      {mounts.length > 0 && (
+        <>
+          <h2 className="fm-sidebar-title">Devices</h2>
+          <nav>
+            {mounts.map((m) => (
+              <button
+                key={m.path}
+                type="button"
+                data-current={cwd === m.path || undefined}
+                onClick={() => void navigate(activePane, m.path)}
+                title={`${m.path} (${m.fs})`}
+              >
+                <Usb size={15} />
+                <span>{m.label}</span>
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
 
       <h2 className="fm-sidebar-title">
         Bookmarks

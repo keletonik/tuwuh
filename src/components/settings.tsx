@@ -614,8 +614,44 @@ export function SettingsPanel() {
                 <dd>Quit</dd>
               </div>
               <div>
+                <dt>Ctrl + N</dt>
+                <dd>New window</dd>
+              </div>
+              <div>
                 <dt>Ctrl + S</dt>
                 <dd>Save the open file</dd>
+              </div>
+              <div>
+                <dt>Ctrl + L</dt>
+                <dd>Edit the location bar</dd>
+              </div>
+              <div>
+                <dt>Ctrl + I</dt>
+                <dd>Filter this folder</dd>
+              </div>
+              <div>
+                <dt>Ctrl + Z</dt>
+                <dd>Undo last trash, rename or create</dd>
+              </div>
+              <div>
+                <dt>F3</dt>
+                <dd>Dual pane</dd>
+              </div>
+              <div>
+                <dt>F4</dt>
+                <dd>Terminal</dd>
+              </div>
+              <div>
+                <dt>F10</dt>
+                <dd>New folder</dd>
+              </div>
+              <div>
+                <dt>Alt + Enter</dt>
+                <dd>Properties</dd>
+              </div>
+              <div>
+                <dt>Alt + .</dt>
+                <dd>Show hidden files</dd>
               </div>
               <div>
                 <dt>Alt + Left</dt>
@@ -640,6 +676,10 @@ export function SettingsPanel() {
               <div>
                 <dt>Delete</dt>
                 <dd>Move to trash</dd>
+              </div>
+              <div>
+                <dt>Shift + Delete</dt>
+                <dd>Delete permanently</dd>
               </div>
               <div>
                 <dt>Escape</dt>

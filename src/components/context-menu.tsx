@@ -61,7 +61,7 @@ export function ContextMenu({
   return (
     <div
       ref={ref}
-      className="fm-menu"
+      className="fm-context"
       role="menu"
       style={{ left: pos.x, top: pos.y }}
       onMouseDown={(e) => e.stopPropagation()}

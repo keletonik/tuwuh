@@ -10,10 +10,13 @@
  * helper decides which Group owns the panel so the three positions cannot
  * silently collapse to one.
  */
+import { useEffect } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Bot, Columns2, PanelLeft, Settings, SquareTerminal, X } from "lucide-react";
+import { copyPath } from "@/lib/api";
 import { parseTerminalDock, terminalSlot } from "@/lib/layout";
 import { useApp } from "@/lib/store";
+import { windowToggleMaximize } from "@/lib/window";
 import { Pane } from "./pane";
 import { Sidebar } from "./sidebar";
 import { EditorPane } from "./editor";
@@ -22,6 +25,8 @@ import { SettingsPanel } from "./settings";
 import { Assistant } from "./assistant";
 import { InfoPanel } from "./info";
 import { MenuBar } from "./menu-bar";
+import { PropertiesDialog } from "./properties";
+import { WindowControls, WindowResizeEdges, dragChrome, useMaximized } from "./window-frame";
 
 function TerminalDockPanel({ orientation }: { orientation: "horizontal" | "vertical" }) {
   const defaultSize = orientation === "horizontal" ? "28" : "30";
@@ -46,6 +51,39 @@ export function Workbench() {
   const closeAllTerminals = useApp((s) => s.closeAllTerminals);
   const closeSettings = useApp((s) => s.closeSettings);
 
+  const maximized = useMaximized();
+
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((ev) => {
+          if (ev.payload.type !== "drop") return;
+          const st = useApp.getState();
+          const pane = st.panes[st.activePane];
+          if (pane.special === "trash") {
+            st.toast("info", "Cannot drop into Trash. Restore items first.");
+            return;
+          }
+          const dest = pane.cwd;
+          const paths = ev.payload.paths;
+          void (async () => {
+            try {
+              for (const p of paths) await copyPath(p, dest);
+              await useApp.getState().refresh();
+            } catch (e) {
+              useApp.getState().toast("error", e instanceof Error ? e.message : String(e));
+            }
+          })();
+        }),
+      )
+      .then((un) => {
+        off = un;
+      })
+      .catch(() => undefined);
+    return () => off?.();
+  }, []);
+
   if (!settings) return null;
   const dual = settings.view.dualPane;
   const editorOpen = tabs.length > 0;
@@ -53,15 +91,24 @@ export function Workbench() {
   const slot = terminalSlot(parseTerminalDock(settings.view.terminalDock));
 
   return (
-    <div className="fm-shell">
-      <header className="fm-chrome-wrap">
+    <div className="fm-shell" data-maximized={maximized || undefined}>
+      <WindowResizeEdges maximized={maximized} />
+      <header
+        className="fm-chrome-wrap"
+        onMouseDown={dragChrome}
+        onDoubleClick={(e) => {
+          const t = e.target as HTMLElement;
+          if (t.closest("button, input, [data-no-drag]")) return;
+          void windowToggleMaximize();
+        }}
+      >
       <div className="fm-chrome">
         <span className="fm-wordmark">
           <img src="/favicon.png" alt="" width={18} height={18} />
           Tuwuh
         </span>
         <span className="fm-chrome-hint">Alt menu</span>
-        <div className="fm-chrome-actions">
+        <div className="fm-chrome-actions" data-no-drag>
           <button
             type="button"
             aria-pressed={dual}
@@ -112,6 +159,7 @@ export function Workbench() {
             <Settings size={15} />
           </button>
         </div>
+        <WindowControls />
       </div>
       <MenuBar />
       </header>
@@ -189,6 +237,8 @@ export function Workbench() {
           </div>
         </div>
       )}
+
+      <PropertiesDialog />
 
       <div className="fm-toasts" role="status" aria-live="polite">
         {toasts.map((t) => (

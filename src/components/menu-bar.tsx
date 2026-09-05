@@ -6,8 +6,10 @@
  * without hunting for a 15px glyph.
  */
 import { useEffect } from "react";
+import { newWindow } from "@/lib/api";
 import { parseTerminalDock, TERMINAL_DOCKS } from "@/lib/layout";
 import { useApp, type PaneId } from "@/lib/store";
+import { windowClose } from "@/lib/window";
 
 interface Item {
   label: string;
@@ -93,9 +95,25 @@ export function MenuBar() {
         title="File"
         items={[
           {
+            label: "New window",
+            shortcut: "Ctrl N",
+            action: () => void newWindow().catch((e) => useApp.getState().toast("error", e.message)),
+          },
+          {
+            label: "New tab",
+            action: () => void useApp.getState().openFolderTab(pane, active.cwd),
+          },
+          { label: "-" },
+          {
             label: "Settings",
             shortcut: "Ctrl ,",
             action: () => useApp.getState().setSettingsOpen(true),
+          },
+          {
+            label: "Properties",
+            shortcut: "Alt Enter",
+            action: () =>
+              useApp.getState().setPropertiesPath(active.selected.at(-1) ?? active.cwd),
           },
           { label: "-" },
           {
@@ -109,7 +127,7 @@ export function MenuBar() {
           {
             label: "Quit",
             shortcut: "Ctrl Q",
-            action: () => window.close(),
+            action: () => void windowClose(),
           },
         ]}
       />
@@ -126,14 +144,12 @@ export function MenuBar() {
           { label: "-" },
           {
             label: view.dualPane ? "Single pane" : "Dual pane",
+            shortcut: "F3",
             action: () => applyView({ dualPane: !view.dualPane }),
           },
           {
             label: view.showHidden ? "Hide hidden files" : "Show hidden files",
-            action: () => {
-              applyView({ showHidden: !view.showHidden });
-              void useApp.getState().refresh();
-            },
+            action: () => applyView({ showHidden: !view.showHidden }),
           },
           {
             label: "Information panel",
@@ -161,6 +177,15 @@ export function MenuBar() {
             label: "Home",
             action: () => void useApp.getState().navigate(pane, useApp.getState().home),
           },
+          {
+            label: "Trash",
+            action: () => void useApp.getState().openTrash(pane),
+          },
+          {
+            label: "Location bar",
+            shortcut: "Ctrl L",
+            action: () => useApp.getState().setEditLocation(pane),
+          },
         ]}
       />
       <Menu
@@ -168,6 +193,7 @@ export function MenuBar() {
         items={[
           {
             label: "New terminal",
+            shortcut: "F4",
             action: () => addTerminal(active.cwd),
           },
           {

@@ -55,6 +55,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -119,6 +120,54 @@ button:focus-visible {
   display: grid;
   grid-template-rows: auto 1fr;
   height: 100%;
+  border: 1px solid var(--fm-border);
+  background: var(--fm-bg);
+  position: relative;
+}
+
+.fm-shell[data-maximized] {
+  border-color: transparent;
+}
+
+/* Window resize edges. The painted border is 1px; the hit target is larger. */
+.fm-win-edge {
+  position: fixed;
+  z-index: 90;
+}
+
+.fm-win-edge-North { top: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.fm-win-edge-South { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.fm-win-edge-West { left: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.fm-win-edge-East { right: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.fm-win-edge-NorthWest { top: 0; left: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+.fm-win-edge-NorthEast { top: 0; right: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.fm-win-edge-SouthWest { bottom: 0; left: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.fm-win-edge-SouthEast { bottom: 0; right: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+
+.fm-win-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.fm-win-btns button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  border-radius: var(--fm-radius);
+  color: var(--fm-muted);
+}
+
+.fm-win-btns button:hover {
+  background: var(--fm-bg2);
+  color: var(--fm-fg);
+}
+
+.fm-win-close:hover {
+  background: var(--fm-danger);
+  color: var(--fm-fg);
 }
 
 .fm-chrome-wrap {
@@ -196,6 +245,7 @@ button:focus-visible {
 .fm-handle {
   background: var(--fm-border);
   transition: background 120ms;
+  position: relative;
 }
 
 .fm-handle-v {
@@ -204,6 +254,21 @@ button:focus-visible {
 
 .fm-handle-h {
   height: 1px;
+}
+
+/* Invisible wider hit target so a 1px line is still grabable. */
+.fm-handle-v::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  cursor: col-resize;
+}
+
+.fm-handle-h::before {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+  cursor: row-resize;
 }
 
 .fm-handle:hover,
@@ -277,8 +342,8 @@ button:focus-visible {
 /* Pane ------------------------------------------------------------------- */
 
 .fm-pane {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   min-width: 0;
@@ -396,6 +461,7 @@ button:focus-visible {
 /* Listing ---------------------------------------------------------------- */
 
 .fm-list {
+  flex: 1;
   overflow: auto;
   /* Reserve the scrollbar gutter. Without it the icon grid's auto-fill is
      computed against the full width, the vertical scrollbar then appears and
@@ -420,8 +486,41 @@ button:focus-visible {
   user-select: none;
 }
 
+.fm-list[data-view="details"] {
+  overflow-x: hidden;
+  container-type: inline-size;
+  container-name: listing;
+}
+
 .fm-list[data-view="details"] .fm-row {
-  grid-template-columns: minmax(140px, 1fr) 72px 118px 88px;
+  grid-template-columns: minmax(0, 1fr) 4.5rem 8.5rem 6.5rem;
+}
+
+@container listing (max-width: 560px) {
+  .fm-list[data-view="details"] .fm-row {
+    grid-template-columns: minmax(0, 1fr) 4.5rem 8.5rem;
+  }
+  .fm-list[data-view="details"] .fm-col-category {
+    display: none;
+  }
+}
+
+@container listing (max-width: 460px) {
+  .fm-list[data-view="details"] .fm-row {
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
+  }
+  .fm-list[data-view="details"] .fm-col-mtime {
+    display: none;
+  }
+}
+
+@container listing (max-width: 300px) {
+  .fm-list[data-view="details"] .fm-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fm-list[data-view="details"] .fm-col-size {
+    display: none;
+  }
 }
 
 .fm-list[data-view="compact"] .fm-row {
@@ -588,10 +687,12 @@ button:focus-visible {
 
 /* Context menu ----------------------------------------------------------- */
 
-.fm-menu {
+.fm-context {
   position: fixed;
   z-index: 50;
-  min-width: 200px;
+  min-width: 220px;
+  max-height: min(80vh, 480px);
+  overflow-y: auto;
   padding: 4px;
   background: var(--fm-bg2);
   border: 1px solid var(--fm-border);
@@ -599,7 +700,7 @@ button:focus-visible {
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
 }
 
-.fm-menu button {
+.fm-context button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -610,15 +711,15 @@ button:focus-visible {
   text-align: left;
 }
 
-.fm-menu button:hover:not(:disabled) {
+.fm-context button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fm-accent) 28%, transparent);
 }
 
-.fm-menu button[data-danger] {
+.fm-context button[data-danger] {
   color: var(--fm-danger);
 }
 
-.fm-menu kbd {
+.fm-context kbd {
   font: 11px ui-monospace, monospace;
   color: var(--fm-muted);
 }
@@ -1171,6 +1272,134 @@ button:focus-visible {
   padding: 4px 10px;
   border: 1px solid var(--fm-border);
   border-radius: var(--fm-radius);
+}
+
+.fm-folder-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px 0;
+  background: var(--fm-bg1);
+  border-bottom: 1px solid var(--fm-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fm-folder-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--fm-radius) var(--fm-radius) 0 0;
+  color: var(--fm-muted);
+  max-width: 160px;
+}
+
+.fm-folder-tabs button span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-folder-tabs button[data-on] {
+  background: var(--fm-bg);
+  color: var(--fm-fg);
+}
+
+.fm-tab-x {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--fm-muted);
+}
+
+.fm-tab-x:hover {
+  background: var(--fm-bg2);
+  color: var(--fm-fg);
+}
+
+.fm-location,
+.fm-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 0 6px;
+  background: var(--fm-bg);
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius);
+}
+
+.fm-location input,
+.fm-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 3px 0;
+}
+
+.fm-filter {
+  margin: 4px 8px 0;
+  flex: none;
+}
+
+.fm-props {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(520px, 100%);
+  max-height: min(640px, 86vh);
+  background: var(--fm-bg1);
+  border: 1px solid var(--fm-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fm-chmod {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.fm-chmod fieldset {
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius);
+  margin: 0;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.fm-chmod legend {
+  padding: 0 4px;
+  color: var(--fm-muted);
+  font-size: 11px;
+}
+
+.fm-chmod label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fm-twist {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--fm-muted);
+  flex: none;
+}
+
+.fm-row[data-drop] {
+  outline: 1px dashed var(--fm-accent);
+  outline-offset: -1px;
+}
+
+.fm-free {
+  margin-left: auto;
 }
 
 .fm-field-grid {
